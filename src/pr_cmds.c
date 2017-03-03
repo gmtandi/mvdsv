@@ -1133,6 +1133,88 @@ void PF_calltimeofday (void)
 	}
 }
 
+
+
+/*
+=================
+PF_str2byte
+
+float str2byte (string str)
+=================
+*/
+void PF_str2byte (void)
+{
+       G_FLOAT(OFS_RETURN) = (float) *G_STRING(OFS_PARM0);
+}
+
+/*
+=================
+PF_str2short
+
+float str2short (string str)
+=================
+*/
+void PF_str2short (void)
+{
+       G_FLOAT(OFS_RETURN) = (float) LittleShort(*(short*)G_STRING(OFS_PARM0));
+}
+
+/*
+=================
+PF_newstr
+
+string newstr (string str [, float size])
+=================
+ */
+void PF_newstr (void)
+{
+        char *s;
+        int i, size;
+
+        s = G_STRING(OFS_PARM0);
+
+        for (i = 0; i < MAX_PRSTR; i++)
+        {
+                if (pr_newstrtbl[i] == NULL)
+                        break;
+        }
+
+        if (i == MAX_PRSTR)
+                PR_RunError("PF_newstr: MAX_PRSTR");
+
+        size = strlen(s) + 1;
+        if (pr_argc == 2 && (int) G_FLOAT(OFS_PARM1) > size)
+                size = (int) G_FLOAT(OFS_PARM1);
+
+        pr_newstrtbl[i] = (char *) Q_malloc(size);
+        strlcpy(pr_newstrtbl[i], s, size);
+
+        G_INT(OFS_RETURN) = -(i+MAX_PRSTR);
+}
+
+/*
+=================
+PF_frestr
+
+void freestr (string str)
+=================
+*/
+
+void PF_freestr (void)
+{
+        int num;
+
+        num = G_INT(OFS_PARM0);
+         if (num > - MAX_PRSTR)
+                 PR_RunError("freestr: Bad pointer");
+
+         num = - (num + MAX_PRSTR);
+         Q_free(pr_newstrtbl[num]);
+         pr_newstrtbl[num] = NULL;
+}
+
+
+
 /*
 =================
 PF_cvar
@@ -2782,6 +2864,7 @@ static struct { int num; builtin_t func; } ext_builtins[] =
 ////
 {99, PF_checkextension},// float(string name) checkextension
 ////
+{102, PF_calltimeofday},// void() calltimeofday
 {103, PF_cvar_string},	// string(string varname) cvar_string
 ////
 {114, PF_strlen},		// float(string s) strlen
@@ -2790,7 +2873,12 @@ static struct { int num; builtin_t func; } ext_builtins[] =
 //{117, PF_stov},			// vector(string s) stov
 {118, PF_strzone},		// string(string s) strzone
 {119, PF_strunzone},	// void(string s) strunzone
-{231, PF_calltimeofday},// void() calltimeofday
+
+{120, PF_str2byte},
+{121, PF_str2short},
+{122, PF_newstr},
+{123, PF_freestr},
+
 {448, PF_cvar_string},	// string(string varname) cvar_string
 {531, PF_setpause},		//void(float pause) setpause
 {532, PF_precache_vwep_model},	// float(string model) precache_vwep_model = #532;
