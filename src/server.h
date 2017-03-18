@@ -407,6 +407,7 @@ typedef struct mvddest_s
 
 	int socket;
 	FILE *file;
+	FILE *filetxt;
 
 	char name[MAX_QPATH];
 	char path[MAX_QPATH];
@@ -980,6 +981,14 @@ void Master_Heartbeat (void);
 // sv_save.c 
 void SV_SaveGame_f (void); 
 void SV_LoadGame_f (void); 
+
+
+// new - floydz
+qbool CheckFlagMsg(char *str);
+char* Dem_GetTeam (int num);
+char* Dem_PlayersE(int num);
+char* Dem_PlayersT(int num);
+int countTeams();
 
 
 #endif /* !__SERVER_H__ */

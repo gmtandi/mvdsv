@@ -355,11 +355,13 @@ int SV_FlyMove (edict_t *ent, float time1, trace_t *steptrace, int type)
 		// if original velocity is against the original velocity, stop dead
 		// to avoid tiny occilations in sloping corners
 		//
+
 		if (DotProduct (ent->v.velocity, primal_velocity) <= 0)
 		{
 			VectorClear (ent->v.velocity);
 			return blocked;
 		}
+
 	}
 
 	return blocked;
@@ -468,7 +470,7 @@ qbool SV_Push (edict_t *pusher, vec3_t move)
 		if (block)
 			continue;
 
-		// if the entity is standing on the pusher, it will definately be moved
+		// if the entity is stwanding on the pusher, it will definately be moved
 		if ( ! ( ((int)check->v.flags & FL_ONGROUND)
 		&& PROG_TO_EDICT(check->v.groundentity) == pusher) )
 		{
@@ -725,7 +727,6 @@ void SV_Physics_Toss (edict_t *ent)
 	// regular thinking
 	if (!SV_RunThink (ent))
 		return;
-
 	if (ent->v.velocity[2] > 0)
 		ent->v.flags = (int)ent->v.flags & ~FL_ONGROUND;
 

@@ -203,7 +203,7 @@ void Run_sv_demotxt_and_sv_onrecordfinish (const char *dest_name, const char *de
 	snprintf(path, MAX_OSPATH, "%s/%s/%s", fs_gamedir, dest_path, dest_name);
 	strlcpy(path + strlen(path) - 3, "txt", MAX_OSPATH - strlen(path) + 3);
 
-	if ((int)sv_demotxt.value && !destroyfiles) // dont keep txt's for deleted demos
+/*	if ((int)sv_demotxt.value && !destroyfiles) // dont keep txt's for deleted demos
 	{
 		FILE *f;
 		char *text;
@@ -220,7 +220,7 @@ void Run_sv_demotxt_and_sv_onrecordfinish (const char *dest_name, const char *de
 			fflush(f);
 			fclose(f);
 		}
-	}
+	}*/
 
 	if (sv_onrecordfinish.string[0] && !destroyfiles) // dont gzip deleted demos
 	{
@@ -248,6 +248,112 @@ void Run_sv_demotxt_and_sv_onrecordfinish (const char *dest_name, const char *de
 	// force cache rebuild.
 	FS_FlushFSHash();
 }
+
+
+char* Dem_GetTeam (int num)
+{
+       if (num == 1)
+               return Info_ValueForKey(svs.info, "team1");
+       else if (num == 2)
+               return Info_ValueForKey(svs.info, "team2");
+       else if (num == 3)
+               return Info_ValueForKey(svs.info, "team3");
+       else if (num == 4)
+               return Info_ValueForKey(svs.info, "team4");
+       else
+               return "NoTEAM";
+}
+int countTeams() {
+       int i = 0;
+       if (strcmp(Info_ValueForKey(svs.info, "team1"), "")!=0)
+               i++;
+       if (strcmp(Info_ValueForKey(svs.info, "team2"), "")!=0)
+               i++;
+       if (strcmp(Info_ValueForKey(svs.info, "team3"), "")!=0)
+               i++;
+       if (strcmp(Info_ValueForKey(svs.info, "team4"), "")!=0)
+               i++;
+       return i;
+}
+
+char* Dem_PlayersE(int num)
+{
+       int     i;
+       client_t *client;
+       static char     *n[1024];
+       static char t[10];
+       int     sep;
+
+       sep = 0;
+       strcpy(n,"");
+       
+       if (num == 1)
+               strcpy(t,Info_ValueForKey(svs.info, "team1"));
+       else if (num == 2)
+               strcpy(t,Info_ValueForKey(svs.info, "team2"));
+       else if (num == 3)
+               strcpy(t,Info_ValueForKey(svs.info, "team3"));
+       else if (num == 4)
+               strcpy(t,Info_ValueForKey(svs.info, "team4"));
+       
+       for (i = 0, client = svs.clients; i < MAX_CLIENTS; i++, client++)
+       {
+               if (!client->name[0] || client->spectator)
+                       continue;
+
+               if (strcmp(t, client->team)==0)
+               {
+                       
+                       if (sep >= 1)
+                               strlcat (n, " ", sizeof(n));
+                       //                              snprintf (n, sizeof(n), "%s_", n);
+                       strlcat (n, client->name, sizeof(n));
+                       //                      snprintf (n, sizeof(n),"%s%s", n, client->name);
+                       sep++;
+               }
+       }
+       return n;
+}
+
+char* Dem_PlayersT(int num)
+{
+       int     i;
+       client_t *client;
+       static char     *n[1024];
+       static char t[10];
+       int     sep;
+
+       sep = 0;
+       strcpy(n,"");
+       
+       if (num == 1)
+               strcpy(t,Info_ValueForKey(svs.info, "team1"));
+       else if (num == 2)
+               strcpy(t,Info_ValueForKey(svs.info, "team2"));
+       else if (num == 3)
+               strcpy(t,Info_ValueForKey(svs.info, "team3"));
+       else if (num == 4)
+               strcpy(t,Info_ValueForKey(svs.info, "team4"));
+
+       for (i = 0, client = svs.clients; i < MAX_CLIENTS; i++, client++)
+       {
+               if (!client->name[0] || client->spectator)
+                       continue;
+
+               if (strcmp(t, client->team)==0)
+               {
+                       
+                       if (sep >= 1)
+                               strlcat (n, "_", sizeof(n));
+                       //                              snprintf (n, sizeof(n), "%s_", n);
+                       strlcat (n, client->name, sizeof(n));
+                       //                      snprintf (n, sizeof(n),"%s%s", n, client->name);
+                       sep++;
+               }
+       }
+       return n;
+}
+
 
 char *SV_PrintTeams (void)
 {

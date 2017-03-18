@@ -3325,6 +3325,7 @@ FIXME
 	(pmove.velocity[2] == -270) && (pmove.cmd.buttons & BUTTON_JUMP))
 		pmove.jump_held = true;
 
+
 	// build physent list
 	pmove.numphysent = 1;
 	pmove.physents[0].model = sv.worldmodel;
@@ -3443,20 +3444,28 @@ static void SV_ExecuteClientMove (client_t *cl, usercmd_t oldest, usercmd_t oldc
 	SV_PreRunCmd();
 
 	net_drop = cl->netchan.dropped;
+
+
+
 	if (net_drop < 20)
 	{
 		while (net_drop > 2)
 		{
 			SV_RunCmd (&cl->lastcmd, false);
+	SV_PostRunCmd();
 			net_drop--;
 		}
 	}
-	if (net_drop > 1)
+	if (net_drop > 1) {
 		SV_RunCmd (&oldest, false);
-	if (net_drop > 0)
+		SV_PostRunCmd();
+	}
+	if (net_drop > 0) {
 		SV_RunCmd (&oldcmd, false);
+		SV_PostRunCmd();
+	}
 	SV_RunCmd (&newcmd, false);
-	
+
 	SV_PostRunCmd();
 }
 

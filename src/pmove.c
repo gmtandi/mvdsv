@@ -103,6 +103,7 @@ static int PM_SlideMove (void)
 		if (trace.startsolid || trace.allsolid)
 		{
 			// entity is trapped in another solid
+
 			VectorClear (pmove.velocity);
 			return 3;
 		}
@@ -134,6 +135,7 @@ static int PM_SlideMove (void)
 		{
 			// this shouldn't really happen
 			VectorClear (pmove.velocity);
+
 			break;
 		}
 
@@ -166,6 +168,7 @@ static int PM_SlideMove (void)
 			if (numplanes != 2)
 			{
 				VectorClear (pmove.velocity);
+
 				break;
 			}
 			CrossProduct (planes[0], planes[1], dir);
@@ -178,6 +181,7 @@ static int PM_SlideMove (void)
 		if (DotProduct (pmove.velocity, primal_velocity) <= 0)
 		{
 			VectorClear (pmove.velocity);
+
 			break;
 		}
 	}
@@ -244,8 +248,9 @@ static int PM_StepSlideMove (qbool in_air)
 	if (!trace.startsolid && !trace.allsolid)
 		VectorCopy (trace.endpos, pmove.origin);
 
-	if (in_air && originalvel[2] < 0)
+	if (in_air && originalvel[2] < 0) {
 		pmove.velocity[2] = 0;
+}
 
 	PM_SlideMove ();
 
@@ -526,6 +531,7 @@ static void PM_AirMove (void)
 		// add gravity
 		pmove.velocity[2] -= movevars.entgravity * movevars.gravity * pm_frametime;
 
+
 		if (movevars.airstep)
 			blocked = PM_StepSlideMove (true);
 		else
@@ -614,6 +620,7 @@ void PM_CategorizePosition (void)
 
 static void PM_CheckJump (void)
 {
+
 	if (pmove.pm_type == PM_FLY)
 		return;
 
@@ -670,8 +677,10 @@ static void PM_CheckJump (void)
 	{
 		if (movevars.ktjump > 1)
 			movevars.ktjump = 1;
-		if (pmove.velocity[2] < 270)
+		if (pmove.velocity[2] < 270) {
 			pmove.velocity[2] = pmove.velocity[2] * (1 - movevars.ktjump) + 270 * movevars.ktjump;
+
+		}
 	}
 
 	pmove.jump_held = true; // don't jump again until released
@@ -768,6 +777,7 @@ static void PM_SpectatorMove (void)
 	if (speed < 1)
 	{
 		VectorClear (pmove.velocity);
+
 	}
 	else
 	{
@@ -889,6 +899,7 @@ void PM_PlayerMove (void)
 	// set onground, watertype, and waterlevel for final spot
 	PM_CategorizePosition ();
 
+
 	if (!movevars.pground)
 	{
 		// this is to make sure landing sound is not played twice
@@ -897,4 +908,5 @@ void PM_PlayerMove (void)
 		        && DotProduct(pmove.velocity, groundplane.normal) < -0.1)
 			PM_ClipVelocity (pmove.velocity, groundplane.normal, pmove.velocity, 1);
 	}
+
 }

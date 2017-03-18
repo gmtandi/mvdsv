@@ -123,6 +123,15 @@ void DestClose (mvddest_t *d, qbool destroyfiles)
 		Q_free(d->cache);
 	if (d->file)
 		fclose(d->file);
+        if (d->filetxt) {
+               fseek(d->filetxt, 0, SEEK_END);
+               unsigned long lentxt = (unsigned long)ftell(d->filetxt);
+               fclose(d->filetxt);
+               if (lentxt < 400) {
+                       destroyfiles = 1;
+               }
+        }
+
 	if (d->socket)
 		closesocket(d->socket);
 	if (d->qtvuserlist)
@@ -173,6 +182,8 @@ void DestFlush (qbool compleate)
 		{
 		case DEST_FILE:
 			fflush (d->file);
+			if (d->filetxt)
+				fflush (d->filetxt);
 			break;
 
 		case DEST_BUFFEREDFILE:
@@ -755,6 +766,7 @@ static mvddest_t *SV_InitRecordFile (char *name)
 	char *s;
 	mvddest_t *dst;
 	FILE *file;
+	FILE *filetxt;
 
 	char path[MAX_OSPATH];
 
@@ -795,7 +807,7 @@ static mvddest_t *SV_InitRecordFile (char *name)
 	strlcpy(path, name, MAX_OSPATH);
 	strlcpy(path + strlen(path) - 3, "txt", MAX_OSPATH - strlen(path) + 3);
 
-	if ((int)sv_demotxt.value)
+	if ((int)sv_demotxt.value == 1 || (int) sv_demotxt.value == 2)
 	{
 		FILE *f;
 		char *text;
@@ -813,6 +825,39 @@ static mvddest_t *SV_InitRecordFile (char *name)
 			fclose(f);
 		}
 	}
+	else if ((int)sv_demotxt.value == 3)
+        {
+               filetxt = fopen (path, "w");
+               if (!filetxt)
+               {
+                       Con_Printf ("ERROR: couldn't open \"%s\"\n", path);
+                       return NULL;
+               }
+               if ( !sv_silentrecord.value )
+               s = path + strlen(path);
+               while (*s != '/') s--;
+               SV_BroadcastPrintf (PRINT_CHAT, "Console recording: %s\n",s+1);
+               dst->filetxt = filetxt;
+               char text[50];
+               time_t now = time(NULL);
+               struct tm *t = localtime(&now);
+               strftime(text, sizeof(text)-1, "%Y-%m-%d %H:%M:%S", t);
+               ///
+               char pl1[30];
+               char pl2[30];
+               strcpy(pl1, Dem_PlayersE(1));
+               strcpy(pl2, Dem_PlayersE(2));
+               fprintf(dst->filetxt, "%s\n", "############################");
+               fprintf(dst->filetxt, "Map: %s\n", sv.mapname);
+               fprintf(dst->filetxt, "%s\n", text);
+               snprintf (text, sizeof(text), "Team 1 (%s) - %s",Dem_GetTeam(1), Q_normalizetext(pl1));
+               fprintf(dst->filetxt, "%s\n", text);
+               snprintf (text, sizeof(text), "Team 2 (%s) - %s",Dem_GetTeam(2), Q_normalizetext(pl2));
+               fprintf(dst->filetxt, "%s\n", text);
+               fprintf(dst->filetxt, "%s\n\n", "############################");
+       }
+
+
 	else
 		Sys_remove(path);
 

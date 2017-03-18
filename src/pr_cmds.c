@@ -236,11 +236,51 @@ void PF_bprint (void)
 	}
 
 	SV_BroadcastPrintf (level, "%s", s);
+
+        if (sv.mvdrecording && sv_demotxt.value == 3)// && entnum == 1)
+        {
+                mvddest_t *d;
+                d = demo.dest;
+                if (d->filetxt)
+                        fprintf(d->filetxt, "%s", s);
+         }
+
+
 }
 
 #define SPECPRINT_CENTERPRINT	0x1
 #define SPECPRINT_SPRINT	0x2
 #define SPECPRINT_STUFFCMD	0x4
+
+char *stringsflag[] = {
+
+"blue's flag",
+"red's flag",
+
+"blue key",
+"red key",
+
+"Blue Flag",
+"Red Flag",
+
+"team one flag",
+"team two flag"
+
+
+};
+
+qbool CheckFlagMsg(char *str)
+{
+  int i;
+  int quant = 7;
+
+    for (i = 0; i < quant; i++) {
+        if (strstr(str, stringsflag[i]))
+          return true;
+    }
+    return false;
+}
+
 /*
 =================
 PF_sprint
@@ -280,6 +320,15 @@ void PF_sprint (void)
 
 	SV_ClientPrintf (client, level, "%s", s);
 
+
+	if (sv.mvdrecording && sv_demotxt.value == 3 && CheckFlagMsg(s) && entnum == 1)
+	{
+		mvddest_t *d;
+		d = demo.dest;
+		if (d->filetxt)
+			fprintf(d->filetxt, "%s", s);
+       }
+
 	//bliP: spectator print ->
 	if ((int)sv_specprint.value & SPECPRINT_SPRINT)
 	{
@@ -300,9 +349,9 @@ void PF_sprint (void)
 /*
 =================
 PF_centerprint
- 
+
 single print to a specific client
- 
+
 centerprint(clientent, value)
 =================
 */
@@ -335,6 +384,15 @@ void PF_centerprint (void)
 			MVD_MSG_WriteString (s);
 		}
 	}
+
+        if (sv.mvdrecording && sv_demotxt.value == 3 && CheckFlagMsg(s) && entnum == 1)
+        {
+                mvddest_t *d;
+                d = demo.dest;
+		if (d->filetxt)
+	                fprintf(d->filetxt, "%s", s);
+        }
+
 
 	//bliP: spectator print ->
 	if ((int)sv_specprint.value & SPECPRINT_CENTERPRINT)
