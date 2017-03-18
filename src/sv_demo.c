@@ -838,13 +838,13 @@ static mvddest_t *SV_InitRecordFile (char *name)
                while (*s != '/') s--;
                SV_BroadcastPrintf (PRINT_CHAT, "Console recording: %s\n",s+1);
                dst->filetxt = filetxt;
-               char text[50];
+               char text[2048];
                time_t now = time(NULL);
                struct tm *t = localtime(&now);
                strftime(text, sizeof(text)-1, "%Y-%m-%d %H:%M:%S", t);
                ///
-               char pl1[30];
-               char pl2[30];
+               char pl1[512];
+               char pl2[512];
                strcpy(pl1, Dem_PlayersE(1));
                strcpy(pl2, Dem_PlayersE(2));
                fprintf(dst->filetxt, "%s\n", "############################");
