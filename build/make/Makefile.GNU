@@ -67,6 +67,7 @@ SV_OBJS = \
 		$(SV_DIR)/pr2_vm.o \
 \
 		$(SV_DIR)/sv_ccmds.o \
+		$(SV_DIR)/sv_locs.o \
 		$(SV_DIR)/sv_demo.o \
 		$(SV_DIR)/sv_demo_misc.o \
 		$(SV_DIR)/sv_demo_qtv.o \
