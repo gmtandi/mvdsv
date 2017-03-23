@@ -1873,4 +1873,5 @@ void SV_InitOperatorCommands (void)
 #endif
 
 	Cmd_AddCommand ("master_rcon_password", SV_MasterPassword_f);
+	Cmd_AddCommand ("loadloc", TP_LoadLocFile_f);
 }
