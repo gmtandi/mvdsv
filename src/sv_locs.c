@@ -85,6 +85,7 @@ qbool TP_LoadLocFile (char *path, qbool quiet)
 	if (!(buf = (char *) FS_LoadHunkFile (locname, NULL))) {
 		if (!quiet)
 			Con_Printf ("Could not load %s\n", locname);
+		TP_ClearLocs();
 		return false;
 	}
 
@@ -224,7 +225,8 @@ void TP_LocationName_F(void) {
 		Con_Printf ("loadloc <filename> : load a loc file\n");
 		return;
 	}
-	Con_Printf("%s",TP_LocationName (Cmd_Argv(1)));
+	float coord = strtof(Cmd_Argv(1),NULL);
+	Con_Printf("%s",TP_LocationName (&coord));
 
 }
 
