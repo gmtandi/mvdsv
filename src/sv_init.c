@@ -392,6 +392,7 @@ void SV_SpawnServer (char *mapname, qbool devmap, char* entityfile)
 	// fill sv.mapname and sv.modelname with new map name
 	strlcpy (sv.mapname, mapname, sizeof(sv.mapname));
 	snprintf (sv.modelname, sizeof(sv.modelname), "maps/%s.bsp", sv.mapname);
+	
 #ifndef SERVERONLY
 	// set cvar
 	Cvar_ForceSet (&host_mapname, mapname);
@@ -413,6 +414,9 @@ void SV_SpawnServer (char *mapname, qbool devmap, char* entityfile)
 		if (!sv.worldmodel)
 			SV_Error ("CM_LoadMap: bad map");
 	}
+	char * loadloc = Q_malloc(snprintf(NULL, 0, "loadloc %s", sv.mapname) + 1);
+    sprintf(loadloc, "loadloc %s", sv.mapname);
+    Cmd_ExecuteString(loadloc);
 	
 	sv.map_checksum2 = Com_TranslateMapChecksum (sv.mapname, sv.map_checksum2);
 

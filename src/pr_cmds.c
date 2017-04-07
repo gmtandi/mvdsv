@@ -321,13 +321,13 @@ void PF_sprint (void)
 	SV_ClientPrintf (client, level, "%s", s);
 
 
-	if (sv.mvdrecording && sv_demotxt.value == 3 && CheckFlagMsg(s) && entnum == 1)
+/*	if (sv.mvdrecording && sv_demotxt.value == 3 && CheckFlagMsg(s) && entnum == 1)
 	{
 		mvddest_t *d;
 		d = demo.dest;
 		if (d->filetxt)
 			fprintf(d->filetxt, "%s", s);
-       }
+       }*/
 
 	//bliP: spectator print ->
 	if ((int)sv_specprint.value & SPECPRINT_SPRINT)
@@ -385,7 +385,7 @@ void PF_centerprint (void)
 		}
 	}
 
-        if (sv.mvdrecording && sv_demotxt.value == 3 && CheckFlagMsg(s) && entnum == 1)
+        if (sv.mvdrecording && sv_demotxt.value == 3 && CheckFlagMsg(s))
         {
                 mvddest_t *d;
                 d = demo.dest;
@@ -1271,7 +1271,27 @@ void PF_freestr (void)
          pr_newstrtbl[num] = NULL;
 }
 
+/*
+=================
+PF_locationname
+ 
+.loc name from coords
+ 
+string locationname (vector1)
+=================
+*/
+void PF_locationname (void)
+{
+	
+	float	*v1;
+	v1 = G_VECTOR(OFS_PARM0);
+	strlcpy(pr_string_temp, TP_LocationName(v1), MAX_PR_STRING_SIZE);
 
+	G_INT(OFS_RETURN) = PR1_SetString(pr_string_temp);
+
+	PF_SetTempString();
+
+}
 
 /*
 =================
@@ -2936,6 +2956,7 @@ static struct { int num; builtin_t func; } ext_builtins[] =
 {121, PF_str2short},
 {122, PF_newstr},
 {123, PF_freestr},
+{124, PF_locationname}, 
 
 {448, PF_cvar_string},	// string(string varname) cvar_string
 {531, PF_setpause},		//void(float pause) setpause

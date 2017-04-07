@@ -3119,9 +3119,9 @@ void SV_Frame (double time1)
 	rand ();
 
 	// decide the simulation time
+	realtime += time1;
 	if (!sv.paused)
 	{
-		realtime += time1;
 		sv.time += time1;
 	}
 
