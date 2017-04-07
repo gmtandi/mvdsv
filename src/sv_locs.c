@@ -226,8 +226,6 @@ void TP_LocationName_F(void) {
 		return;
 	}
 	float coord = strtof(Cmd_Argv(1),NULL);
-	Con_Printf("%s",TP_LocationName (&coord));
-
 }
 
 char *TP_LocationName(vec3_t location)
