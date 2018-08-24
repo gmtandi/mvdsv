@@ -264,10 +264,34 @@ static void Cmd_New_f (void)
 #ifdef FTE_PEXT_FLOATCOORDS
 	if (msg_coordsize > 2 && !(sv_client->fteprotocolextensions & FTE_PEXT_FLOATCOORDS))
 	{
-		SV_ClientPrintf(sv_client, 2, "\n\n\n\nSorry, but your client does not appear to support FTE's bigcoords\n"
-									 "FTE users will need to set cl_nopext to 0 and then reconnect, or to upgrade\n");
-		Sys_Printf("%s does not support bigcoords\n", sv_client->name);
-		return;
+		SV_ClientPrintf(sv_client, 2, "\n\n\n\n"
+			"Your client lacks the necessary extensions\n"
+			"  to connect to this server.\n"
+			"Set /cl_pext_floatcoords 1, or upgrade.\n"
+			"Please upgrade to one of the following:\n"
+			"> ezQuake 2.2 (https://ezquake.github.io)\n"
+			"> fodquake 0.4 (http://fodquake.net)\n"
+			"> FTEQW (http://fte.triptohell.info/)\n");
+		if (!sv_client->spectator) {
+			SV_DropClient (sv_client);
+			return;
+		}
+		if (!SV_SkipCommsBotMessage(sv_client)) {
+			return;
+		}
+	}
+#endif
+
+#ifdef FTE_PEXT_ENTITYDBL
+	if (sv.max_edicts > 512 && !(sv_client->fteprotocolextensions & FTE_PEXT_ENTITYDBL)) {
+		SV_ClientPrintf(sv_client, 2, "\n\nWARNING:\n"
+			"Your client lacks support for extended\n"
+			"  entity limits, some enemies/projectiles\n"
+			"  may be invisible to you.\n"
+			"Please upgrade to one of the following:\n"
+			"> ezQuake 2.2 (https://ezquake.github.io)\n"
+			"> fodquake 0.4 (http://fodquake.net)\n"
+			"> FTEQW (http://fte.triptohell.info/)\n");
 	}
 #endif
 
@@ -304,6 +328,12 @@ static void Cmd_New_f (void)
 		MSG_WriteLong (&sv_client->netchan.message, sv_client->fteprotocolextensions2);
 	}
 #endif // PROTOCOL_VERSION_FTE2
+#ifdef PROTOCOL_VERSION_MVD1
+	if (sv_client->mvdprotocolextensions1) {
+		MSG_WriteLong (&sv_client->netchan.message, PROTOCOL_VERSION_MVD1);
+		MSG_WriteLong (&sv_client->netchan.message, sv_client->mvdprotocolextensions1);
+	}
+#endif
 	MSG_WriteLong  (&sv_client->netchan.message, PROTOCOL_VERSION);
 	MSG_WriteLong  (&sv_client->netchan.message, svs.spawncount);
 	MSG_WriteString(&sv_client->netchan.message, gamedir);
@@ -317,7 +347,7 @@ static void Cmd_New_f (void)
 	if (sv_client->rip_vip)
 		MSG_WriteString (&sv_client->netchan.message, "");
 	else
-		MSG_WriteString (&sv_client->netchan.message, PR_GetString(sv.edicts->v.message));
+		MSG_WriteString (&sv_client->netchan.message, PR_GetEntityString(sv.edicts->v.message));
 
 	// send the movevars
 	MSG_WriteFloat(&sv_client->netchan.message, movevars.gravity);
@@ -439,16 +469,16 @@ static void Cmd_Modellist_f (void)
 {
 	char		**s;
 	unsigned	n;
+	int         i;
+	unsigned    maxclientsupportedmodels;
 
-	if (sv_client->state != cs_connected)
-	{
+	if (sv_client->state != cs_connected) {
 		Con_Printf ("modellist not valid -- already spawned\n");
 		return;
 	}
 
 	// handle the case of a level changing while a client was connecting
-	if (Q_atoi(Cmd_Argv(1)) != svs.spawncount)
-	{
+	if (Q_atoi(Cmd_Argv(1)) != svs.spawncount) {
 		SV_ClearReliable (sv_client);
 		Con_Printf ("SV_Modellist_f from different level\n");
 		Cmd_New_f ();
@@ -456,11 +486,9 @@ static void Cmd_Modellist_f (void)
 	}
 
 	n = Q_atoi(Cmd_Argv(2));
-	if (n >= MAX_MODELS)
-	{
+	if (n >= MAX_MODELS) {
 		SV_ClearReliable (sv_client);
-		SV_ClientPrintf (sv_client, PRINT_HIGH,
-		                 "SV_Modellist_f: Invalid modellist index\n");
+		SV_ClientPrintf (sv_client, PRINT_HIGH, "SV_Modellist_f: Invalid modellist index\n");
 		SV_DropClient (sv_client);
 		return;
 	}
@@ -470,15 +498,16 @@ static void Cmd_Modellist_f (void)
 		char ss[1024] = "//vwep ";
 		// send VWep precaches
 		for (i = 0, s = sv.vw_model_name; i < MAX_VWEP_MODELS; s++, i++) {
-			if (!*s || !**s)
+			if (!*s || !**s) {
 				break;
-			if (i > 0)
-				strlcat (ss, " ", sizeof(ss));
-			strlcat (ss, TrimModelName(*s), sizeof(ss));
+			}
+			if (i > 0) {
+				strlcat(ss, " ", sizeof(ss));
+			}
+			strlcat(ss, TrimModelName(*s), sizeof(ss));
 		}
-		strlcat (ss, "\n", sizeof(ss));
-		if (ss[strlen(ss)-1] == '\n')		// didn't overflow?
-		{
+		strlcat(ss, "\n", sizeof(ss));
+		if (ss[strlen(ss) - 1] == '\n') {       // didn't overflow?
 			ClientReliableWrite_Begin (sv_client, svc_stufftext, 2 + strlen(ss));
 			ClientReliableWrite_String (sv_client, ss);
 		}
@@ -486,27 +515,45 @@ static void Cmd_Modellist_f (void)
 
 	//NOTE:  This doesn't go through ClientReliableWrite since it's before the user
 	//spawns.  These functions are written to not overflow
-	if (sv_client->num_backbuf)
-	{
+	if (sv_client->num_backbuf) {
 		Con_Printf("WARNING %s: [SV_Modellist] Back buffered (%d0), clearing\n", sv_client->name, sv_client->netchan.message.cursize);
 		sv_client->num_backbuf = 1;
 
 		SZ_Clear(&sv_client->netchan.message);
 	}
 
-	MSG_WriteByte (&sv_client->netchan.message, svc_modellist);
-	MSG_WriteByte (&sv_client->netchan.message, n);
-	for (s = sv.model_precache+1+n ;
-	        *s && sv_client->netchan.message.cursize < (MAX_MSGLEN/2);
-	        s++, n++)
-		MSG_WriteString (&sv_client->netchan.message, *s);
-	MSG_WriteByte (&sv_client->netchan.message, 0);
-
-	// next msg
-	if (*s)
-		MSG_WriteByte (&sv_client->netchan.message, n);
+#ifdef FTE_PEXT_MODELDBL
+	if (n > 255) {
+		MSG_WriteByte(&sv_client->netchan.message, svc_fte_modellistshort);
+		MSG_WriteShort(&sv_client->netchan.message, n);
+	}
 	else
-		MSG_WriteByte (&sv_client->netchan.message, 0);
+#endif
+	{
+		MSG_WriteByte(&sv_client->netchan.message, svc_modellist);
+		MSG_WriteByte(&sv_client->netchan.message, n);
+	}
+
+	maxclientsupportedmodels = 256;
+#ifdef FTE_PEXT_MODELDBL
+	if (sv_client->fteprotocolextensions & FTE_PEXT_MODELDBL) {
+		maxclientsupportedmodels *= 2;
+	}
+#endif
+
+	s = sv.model_precache + 1 + n;
+	for (i = 1 + n; i < maxclientsupportedmodels && *s && (((i-1)&255) == 0 || sv_client->netchan.message.cursize < (MAX_MSGLEN/2)); i++, s++) {
+		MSG_WriteString (&sv_client->netchan.message, *s);
+	}
+	n = i - 1;
+
+	if (!s[0] || n == maxclientsupportedmodels - 1) {
+		n = 0;
+	}
+
+	// next msg (nul terminator then next request indicator)
+	MSG_WriteByte (&sv_client->netchan.message, 0);
+	MSG_WriteByte (&sv_client->netchan.message, n);
 }
 
 /*
@@ -518,6 +565,7 @@ static void Cmd_PreSpawn_f (void)
 {
 	unsigned int buf;
 	unsigned int check;
+	int i, j;
 
 	if (sv_client->state != cs_connected)
 	{
@@ -535,7 +583,7 @@ static void Cmd_PreSpawn_f (void)
 	}
 
 	buf = Q_atoi(Cmd_Argv(2));
-	if (buf >= sv.num_signon_buffers)
+	if (buf >= sv.num_signon_buffers + sv.static_entity_count + sv.num_baseline_edicts)
 		buf = 0;
 
 	if (!buf)
@@ -558,6 +606,13 @@ static void Cmd_PreSpawn_f (void)
 		sv_client->checksum = check;
 	}
 
+	if (SV_SkipCommsBotMessage(sv_client)) {
+		// skip pre-spawning
+		MSG_WriteByte (&sv_client->netchan.message, svc_stufftext);
+		MSG_WriteString (&sv_client->netchan.message, va("cmd spawn %i 0\n", svs.spawncount) );
+		return;
+	}
+
 	//NOTE:  This doesn't go through ClientReliableWrite since it's before the user
 	//spawns.  These functions are written to not overflow
 	if (sv_client->num_backbuf)
@@ -567,18 +622,86 @@ static void Cmd_PreSpawn_f (void)
 		SZ_Clear(&sv_client->netchan.message);
 	}
 
-	SZ_Write (&sv_client->netchan.message,
-	          sv.signon_buffers[buf],
-	          sv.signon_buffer_size[buf]);
+	if (buf < sv.static_entity_count) {
+		entity_state_t from = { 0 };
 
-	buf++;
-	if (buf == sv.num_signon_buffers)
-	{	// all done prespawning
-		MSG_WriteByte (&sv_client->netchan.message, svc_stufftext);
-		MSG_WriteString (&sv_client->netchan.message, va("cmd spawn %i 0\n",svs.spawncount) );
+		while (buf < sv.static_entity_count) {
+			entity_state_t* s = &sv.static_entities[buf];
+
+			if (sv_client->netchan.message.cursize >= (sv_client->netchan.message.maxsize / 2)) {
+				break;
+			}
+
+			if (sv_client->fteprotocolextensions & FTE_PEXT_SPAWNSTATIC2) {
+				MSG_WriteByte(&sv_client->netchan.message, svc_fte_spawnstatic2);
+				SV_WriteDelta(sv_client, &from, s, &sv_client->netchan.message, true);
+			}
+			else if (s->modelindex < 256) {
+				MSG_WriteByte(&sv_client->netchan.message, svc_spawnstatic);
+				MSG_WriteByte(&sv_client->netchan.message, s->modelindex);
+				MSG_WriteByte(&sv_client->netchan.message, s->frame);
+				MSG_WriteByte(&sv_client->netchan.message, s->colormap);
+				MSG_WriteByte(&sv_client->netchan.message, s->skinnum);
+				for (i = 0; i < 3; ++i) {
+					MSG_WriteCoord(&sv_client->netchan.message, s->origin[i]);
+					MSG_WriteAngle(&sv_client->netchan.message, s->angles[i]);
+				}
+			}
+
+			++buf;
+		}
 	}
-	else
-	{	// need to prespawn more
+	else if (buf < sv.static_entity_count + sv.num_baseline_edicts) {
+		static entity_state_t empty_baseline = { 0 };
+
+		for (i = buf - sv.static_entity_count; i < sv.num_baseline_edicts; ++i) {
+			edict_t* svent = EDICT_NUM(i);
+			entity_state_t* s = &svent->e->baseline;
+
+			if (sv_client->netchan.message.cursize >= (sv_client->netchan.message.maxsize / 2)) {
+				break;
+			}
+
+			if (!s->number || !s->modelindex || !memcmp(s, &empty_baseline, sizeof(empty_baseline))) {
+				++buf;
+				continue;
+			}
+
+			if (sv_client->fteprotocolextensions & FTE_PEXT_SPAWNSTATIC2) {
+				MSG_WriteByte(&sv_client->netchan.message, svc_fte_spawnbaseline2);
+				SV_WriteDelta(sv_client, &empty_baseline, s, &sv_client->netchan.message, true);
+			}
+			else if (s->modelindex < 256) {
+				MSG_WriteByte(&sv_client->netchan.message, svc_spawnbaseline);
+				MSG_WriteShort(&sv_client->netchan.message, i);
+				MSG_WriteByte(&sv_client->netchan.message, svent->e->baseline.modelindex);
+				MSG_WriteByte(&sv_client->netchan.message, svent->e->baseline.frame);
+				MSG_WriteByte(&sv_client->netchan.message, svent->e->baseline.colormap);
+				MSG_WriteByte(&sv_client->netchan.message, svent->e->baseline.skinnum);
+				for (j = 0; j < 3; j++) {
+					MSG_WriteCoord(&sv_client->netchan.message, svent->e->baseline.origin[j]);
+					MSG_WriteAngle(&sv_client->netchan.message, svent->e->baseline.angles[j]);
+				}
+			}
+			++buf;
+		}
+	}
+	else {
+		SZ_Write(
+			&sv_client->netchan.message,
+			sv.signon_buffers[buf - sv.static_entity_count - sv.num_baseline_edicts],
+			sv.signon_buffer_size[buf - sv.static_entity_count - sv.num_baseline_edicts]
+		);
+		++buf;
+	}
+
+	if (buf == sv.num_signon_buffers + sv.static_entity_count + sv.num_baseline_edicts) {
+		// all done prespawning
+		MSG_WriteByte (&sv_client->netchan.message, svc_stufftext);
+		MSG_WriteString (&sv_client->netchan.message, va("cmd spawn %i 0\n", svs.spawncount) );
+	}
+	else {
+		// need to prespawn more
 		MSG_WriteByte (&sv_client->netchan.message, svc_stufftext);
 		MSG_WriteString (&sv_client->netchan.message,
 		                 va("cmd prespawn %i %i\n", svs.spawncount, buf) );
@@ -592,9 +715,9 @@ Cmd_Spawn_f
 */
 static void Cmd_Spawn_f (void)
 {
-	int		i;
-	client_t	*client;
-	unsigned n;
+	int         i;
+	client_t    *client;
+	unsigned    n;
 
 	if (sv_client->state != cs_connected)
 	{
@@ -712,7 +835,7 @@ static void SV_SpawnSpectator (void)
 	for (i=MAX_CLIENTS-1 ; i<sv.num_edicts ; i++)
 	{
 		e = EDICT_NUM(i);
-		if (!strcmp(PR_GetString(e->v.classname), "info_player_start"))
+		if (!strcmp(PR_GetEntityString(e->v.classname), "info_player_start"))
 		{
 			VectorCopy (e->v.origin, sv_player->v.origin);
 			VectorCopy (e->v.angles, sv_player->v.angles);
@@ -898,7 +1021,7 @@ void SV_CompleteDownoload(void)
 	if (sv_client->spawncount != svs.spawncount)
 	{
 		char *str = "changing\n"
-					"reconnect\n";
+		            "reconnect\n";
 
 		ClientReliableWrite_Begin (sv_client, svc_stufftext, strlen(str)+2);
 		ClientReliableWrite_String (sv_client, str);
@@ -986,11 +1109,11 @@ void SV_NextChunkedDownload(int chunknum, int percent, int chunked_download_numb
 
 static void Cmd_NextDownload_f (void)
 {
-	byte	buffer[FILE_TRANSFER_BUF_SIZE];
-	int		r, tmp;
-	int		percent;
-	int		size;
-	double	frametime;
+	byte    buffer[FILE_TRANSFER_BUF_SIZE];
+	int     r, tmp;
+	int     percent;
+	int     size;
+	double  frametime;
 
 	if (!sv_client->download)
 		return;
@@ -1066,7 +1189,7 @@ SV_NextUpload
 ==================
 */
 void SV_ReplaceChar(char *s, char from, char to);
-void SV_CancelUpload()
+void SV_CancelUpload(void)
 {
 	SV_ClientPrintf(sv_client, PRINT_HIGH, "Upload denied\n");
 	ClientReliableWrite_Begin (sv_client, svc_stufftext, 8);
@@ -1174,6 +1297,16 @@ static void SV_NextUpload (void)
 	}
 }
 
+static void SV_UserCleanFilename(char* name)
+{
+	char* p;
+
+	// lowercase name (needed for casesen file systems)
+	for (p = name; *p; p++) {
+		*p = (char)tolower(*p);
+	}
+}
+
 /*
 ==================
 Cmd_Download_f
@@ -1182,7 +1315,8 @@ Cmd_Download_f
 //void SV_ReplaceChar(char *s, char from, char to);
 static void Cmd_Download_f(void)
 {
-	char	*name, n[MAX_OSPATH], *val, *p;
+	char	*name, n[MAX_OSPATH], *val;
+	char alternative_path[MAX_OSPATH];
 	extern	cvar_t	allow_download;
 	extern	cvar_t	allow_download_skins;
 	extern	cvar_t	allow_download_models;
@@ -1253,10 +1387,17 @@ static void Cmd_Download_f(void)
 		sv_client->netchan.rate = 1.0 / SV_BoundRate(false, Q_atoi(*val ? val : "99999"));
 	}
 
+	memset(alternative_path, 0, sizeof(alternative_path));
 	if ( !strncmp(name, "demos/", 6) && sv_demoDir.string[0])
 	{
 		snprintf(n,sizeof(n), "%s/%s", sv_demoDir.string, name + 6);
 		name = n;
+
+		if (sv_demoDirAlt.string[0]) {
+			strlcpy(alternative_path, sv_demoDirAlt.string, sizeof(alternative_path));
+			strlcat(alternative_path, "/", sizeof(alternative_path));
+			strlcat(alternative_path, name + 6, sizeof(alternative_path));
+		}
 	}
 	else if (!strncmp(name, "demonum/", 8))
 	{
@@ -1295,31 +1436,27 @@ static void Cmd_Download_f(void)
 		return;
 	}
 
-	// lowercase name (needed for casesen file systems)
-	{
-		for (p = name; *p; p++)
-			*p = (char)tolower(*p);
-	}
+	SV_UserCleanFilename(name);
+	SV_UserCleanFilename(alternative_path);
 
 	sv_client->downloadcount = 0;
 
-	// techlogin download uses simple path from quake folder
-	if (sv_client->special)
-	{
-		sv_client->download = FS_OpenVFS(name, "rb", FS_GAME); // FIXME: Should we use FS_BASE ???
-		if (sv_client->download)
-		{
-			if ((int) developer.value)
-				Sys_Printf ("FindFile: %s\n", name);
-			sv_client->downloadsize = VFS_GETLEN(sv_client->download);
-		}
-	}
-	else
-	{
-		sv_client->download = FS_OpenVFS(name, "rb", FS_GAME);
-		if (sv_client->download)
-			sv_client->downloadsize = VFS_GETLEN(sv_client->download);
+#ifdef SERVERONLY
+#define CLIENT_DOWNLOAD_RELATIVE_BASE FS_GAME // FIXME: Should we use FS_BASE ???
+#else
+#define CLIENT_DOWNLOAD_RELATIVE_BASE FS_BASE
+#endif
 
+	sv_client->download = FS_OpenVFS(name, "rb", CLIENT_DOWNLOAD_RELATIVE_BASE);
+	if (!sv_client->download && alternative_path[0]) {
+		sv_client->download = FS_OpenVFS(alternative_path, "rb", CLIENT_DOWNLOAD_RELATIVE_BASE);
+	}
+	if (sv_client->download) {
+		sv_client->downloadsize = VFS_GETLEN(sv_client->download);
+	}
+
+	// if not techlogin, perform extra check to block .pak maps
+	if (!sv_client->special) {
 		// special check for maps that came from a pak file
 		if (sv_client->download && !strncmp(name, "maps/", 5) && VFS_COPYPROTECTED(sv_client->download) && !(int)allow_download_pakmaps.value)
 		{
@@ -1426,20 +1563,20 @@ static void Cmd_DemoDownload_f(void)
 	if (Cmd_Argc() < 2)
 	{
 		Con_Printf("\n%s\n"
-			   "Usage:\n"
-			   "  %s %s [%s [%s]]\n"
+		           "Usage:\n"
+		           "  %s %s [%s [%s]]\n"
 		           "    \"#\" is one or several numbers from the demo list\n"
-			   "  %s %s [%s%s [%s%s%s]]\n"
+		           "  %s %s [%s%s [%s%s%s]]\n"
 		           "    Each number of dots represents the Nth last recorded demo\n"
-			   "    (Note that you can mix numbers and groups of dots)\n"
-			   "  %s [%s|%s|%s]\n"
-			   "     \"\\\", \"stop\" or \"cancel\" clear the download queue\n\n",
-			   Q_redtext(cmdhelp_dldesc),
-			   Q_redtext(cmdhelp_dl), Q_redtext(cmdhelp_pound), Q_redtext(cmdhelp_pound), Q_redtext(cmdhelp_pound),
-			   Q_redtext(cmdhelp_dl), Q_redtext(cmdhelp_dot), Q_redtext(cmdhelp_dot), Q_redtext(cmdhelp_dot),
-			   Q_redtext(cmdhelp_dot), Q_redtext(cmdhelp_dot), Q_redtext(cmdhelp_dot),
-			   Q_redtext(cmdhelp_dl), Q_redtext(cmdhelp_bs), Q_redtext(cmdhelp_stop), Q_redtext(cmdhelp_cancel)
-		           );
+		           "    (Note that you can mix numbers and groups of dots)\n"
+		           "  %s [%s|%s|%s]\n"
+		           "     \"\\\", \"stop\" or \"cancel\" clear the download queue\n\n",
+		           Q_redtext(cmdhelp_dldesc),
+		           Q_redtext(cmdhelp_dl), Q_redtext(cmdhelp_pound), Q_redtext(cmdhelp_pound), Q_redtext(cmdhelp_pound),
+		           Q_redtext(cmdhelp_dl), Q_redtext(cmdhelp_dot), Q_redtext(cmdhelp_dot), Q_redtext(cmdhelp_dot),
+		           Q_redtext(cmdhelp_dot), Q_redtext(cmdhelp_dot), Q_redtext(cmdhelp_dot),
+		           Q_redtext(cmdhelp_dl), Q_redtext(cmdhelp_bs), Q_redtext(cmdhelp_stop), Q_redtext(cmdhelp_cancel)
+		);
 		return;
 	}
 
@@ -1547,12 +1684,12 @@ SV_Say
 
 static void SV_Say (qbool team)
 {
-	qbool	fake = false;
+	qbool    fake = false;
 	client_t *client;
-	int		j, tmp, cls = 0;
-	char	*p; // used basically for QC based mods.
-	char	text[2048] = ""; // used if mod does not have own support for say/say_team.
-	qbool	write_begin;
+	int      j, tmp, cls = 0;
+	char     *p;                  // used basically for QC based mods.
+	char     text[2048] = {0};    // used if mod does not have own support for say/say_team.
+	qbool    write_begin;
 
 	if (Cmd_Argc () < 2)
 		return;
@@ -1623,7 +1760,7 @@ static void SV_Say (qbool team)
 		if (tmp < 0)
 			tmp = 10+tmp;
 		if (!sv.paused &&
-		        sv_client->whensaid[tmp] && (realtime-sv_client->whensaid[tmp] < fp_persecond))
+			sv_client->whensaid[tmp] && (realtime-sv_client->whensaid[tmp] < fp_persecond))
 		{
 			sv_client->lockedtill = realtime + fp_secondsdead;
 			if (fp_msg[0])
@@ -1664,16 +1801,12 @@ static void SV_Say (qbool team)
 					; // send msg to self anyway
 				else if (client->spectator)
 				{
-					if(   !sv_sayteam_to_spec.value // player can't say_team to spec in this case
-					   || !fake // self say_team does't contain $\ so this is treat as private message
-					   || (   client->spec_track <= 0
-						   && strcmp(sv_client->team, client->team)
-						  ) // spec do not track player and on different team
-					   || (   client->spec_track  > 0
-						   && strcmp(sv_client->team, svs.clients[client->spec_track - 1].team)
-						  ) // spec track player on different team
-					  )
-					continue;	// on different teams
+					if( !sv_sayteam_to_spec.value // player can't say_team to spec in this case
+					    || !fake // self say_team does't contain $\ so this is treat as private message
+					    || (client->spec_track <= 0 && strcmp(sv_client->team, client->team)) // spec do not track player and on different team
+					    || (client->spec_track > 0 && strcmp(sv_client->team, svs.clients[client->spec_track - 1].team)) // spec track player on different team
+					)
+						continue;	// on different teams
 				}
 				else if (coop.value)
 					; // allow team messages to everyone in coop from players.
@@ -2048,6 +2181,7 @@ char *shortinfotbl[] =
 	"chat",
 #endif
 	"gender",
+	"*auth",
 	//"*client",
 	//"*spectator",
 	//"*VIP",
@@ -2057,7 +2191,6 @@ char *shortinfotbl[] =
 static void Cmd_SetInfo_f (void)
 {
 	extern cvar_t sv_forcenick, sv_login;
-	int i;
 	sv_client_state_t saved_state;
 	char oldval[MAX_EXT_INFO_STRING];
 	char info[MAX_EXT_INFO_STRING];
@@ -2065,10 +2198,10 @@ static void Cmd_SetInfo_f (void)
 	if (sv_kickuserinfospamtime.value > 0 && (int)sv_kickuserinfospamcount.value > 0)
 	{
 		if (!sv_client->lastuserinfotime ||
-			realtime - sv_client->lastuserinfotime > sv_kickuserinfospamtime.value)
+			curtime - sv_client->lastuserinfotime > sv_kickuserinfospamtime.value)
 		{
 			sv_client->lastuserinfocount = 0;
-			sv_client->lastuserinfotime = realtime;
+			sv_client->lastuserinfotime = curtime;
 		}
 		else if (++(sv_client->lastuserinfocount) > (int)sv_kickuserinfospamcount.value)
 		{
@@ -2126,7 +2259,7 @@ static void Cmd_SetInfo_f (void)
 
 	pr_global_struct->time = sv.time;
 	pr_global_struct->self = EDICT_TO_PROG(sv_player);
-	if(PR_UserInfoChanged())
+	if (PR_UserInfoChanged())
 		return; // does not allowed to be changed by mod.
 
 	Info_Set (&sv_client->_userinfo_ctx_, Cmd_Argv(1), Cmd_Argv(2));
@@ -2151,7 +2284,7 @@ static void Cmd_SetInfo_f (void)
 		}
 		//<-
 		//VVD: forcenick ->
-		if ((int)sv_forcenick.value && (int)sv_login.value && sv_client->login)
+		if ((int)sv_forcenick.value && (int)sv_login.value && sv_client->login[0])
 		{
 			SV_ClientPrintf(sv_client, PRINT_CHAT,
 			                "You can't change your name while logged in on this server.\n");
@@ -2209,9 +2342,9 @@ void ProcessUserInfoChange (client_t* sv_client, const char* key, const char* ol
 	{
 		pr_global_struct->time = sv.time;
 		pr_global_struct->self = EDICT_TO_PROG(sv_client->edict);
-		G_INT(OFS_PARM0) = PR_SetTmpString(key);
-		G_INT(OFS_PARM1) = PR_SetTmpString(old_value);
-		G_INT(OFS_PARM2) = PR_SetTmpString(Info_Get(&sv_client->_userinfo_ctx_, key));
+		PR_SetTmpString(&G_INT(OFS_PARM0), key);
+		PR_SetTmpString(&G_INT(OFS_PARM1), old_value);
+		PR_SetTmpString(&G_INT(OFS_PARM2), Info_Get(&sv_client->_userinfo_ctx_, key));
 		PR_ExecuteProgram (mod_UserInfo_Changed);
 	}
 
@@ -2221,7 +2354,7 @@ void ProcessUserInfoChange (client_t* sv_client, const char* key, const char* ol
 		{
 			char *nuw = Info_Get(&sv_client->_userinfo_ctx_, key);
 
-			Info_Set (&sv_client->_userinfoshort_ctx_, key, nuw);
+			Info_SetStar (&sv_client->_userinfoshort_ctx_, key, nuw);
 
 			i = sv_client - svs.clients;
 			MSG_WriteByte (&sv.reliable_datagram, svc_setinfo);
@@ -2371,7 +2504,7 @@ static void SetUpClientEdict (client_t *cl, edict_t *ent)
 {
 	ED_ClearEdict(ent);
 	// restore client name.
-	ent->v.netname = PR_SetString(cl->name);
+	PR_SetEntityString(ent, ent->v.netname, cl->name);
 	// so spec will have right goalentity - if speccing someone
 	if(cl->spectator && cl->spec_track > 0)
 		ent->v.goalentity = EDICT_TO_PROG(svs.clients[cl->spec_track-1].edict);
@@ -2473,7 +2606,7 @@ static void Cmd_Join_f (void)
 	pr_global_struct->self = EDICT_TO_PROG(sv_player);
 	G_FLOAT(OFS_PARM0) = (float) sv_client->vip;
 	PR_GameClientConnect(0);
-	
+
 	// actually spawn the player
 	pr_global_struct->time = sv.time;
 	pr_global_struct->self = EDICT_TO_PROG(sv_player);
@@ -2550,7 +2683,7 @@ static void Cmd_Observe_f (void)
 	PR_GameSetNewParms();
 
 	SV_SpawnSpectator ();
-	
+
 	// copy spawn parms out of the client_t
 	for (i=0 ; i<NUM_SPAWN_PARMS ; i++)
 		sv_client->spawn_parms[i] = (&PR_GLOBAL(parm1))[i];
@@ -2595,12 +2728,12 @@ struct
 {
 	struct voice_ring_s
 	{
-			unsigned int sender;
-			unsigned char receiver[MAX_CLIENTS/8];
-			unsigned char gen;
-			unsigned char seq;
-			unsigned int datalen;
-			unsigned char data[1024];
+		unsigned int sender;
+		unsigned char receiver[MAX_CLIENTS/8];
+		unsigned char gen;
+		unsigned char seq;
+		unsigned int datalen;
+		unsigned char data[1024];
 	} ring[VOICE_RING_SIZE];
 	unsigned int write;
 } voice;
@@ -2891,6 +3024,17 @@ void Cmd_PEXT_f(void)
 			}
 			break;
 #endif // PROTOCOL_VERSION_FTE2
+
+#ifdef PROTOCOL_VERSION_MVD1
+		case PROTOCOL_VERSION_MVD1:
+			if (!sv_client->mvdprotocolextensions1)
+			{
+				sv_client->mvdprotocolextensions1 = proto_value & svs.mvdprotocolextension1;
+				if (sv_client->mvdprotocolextensions1)
+					Con_DPrintf("PEXT: Client supports 0x%x mvdsv extensions\n", sv_client->mvdprotocolextensions1);
+			}
+			break;
+#endif
 		}
 	}
 
@@ -2898,6 +3042,62 @@ void Cmd_PEXT_f(void)
 	MSG_WriteByte (&sv_client->netchan.message, svc_stufftext);
 	MSG_WriteString (&sv_client->netchan.message, "cmd new\n");
 }
+
+#if defined(SERVERONLY) && defined(WWW_INTEGRATION)
+// { Central login
+void Cmd_Login_f(void)
+{
+	extern void Central_GenerateChallenge(client_t* client, const char* username);
+
+	if (Cmd_Argc() != 2) {
+		MSG_WriteByte (&sv_client->netchan.message, svc_print);
+		MSG_WriteByte (&sv_client->netchan.message, PRINT_HIGH);
+		MSG_WriteString (&sv_client->netchan.message, "Usage: login <username>\n");
+		return;
+	}
+
+	if (sv.time - sv_client->login_request_time < LOGIN_MIN_RETRY_TIME) {
+		MSG_WriteByte (&sv_client->netchan.message, svc_print);
+		MSG_WriteByte (&sv_client->netchan.message, PRINT_HIGH);
+		MSG_WriteString (&sv_client->netchan.message, "Please wait and try again\n");
+		return;
+	}
+
+	Central_GenerateChallenge(sv_client, Cmd_Argv(1));
+}
+
+void Cmd_ChallengeResponse_f(void)
+{
+	extern void Central_VerifyChallengeResponse(client_t* client, const char* challenge, const char* response);
+
+	if (Cmd_Argc() != 2) {
+		MSG_WriteByte (&sv_client->netchan.message, svc_print);
+		MSG_WriteByte (&sv_client->netchan.message, PRINT_HIGH);
+		MSG_WriteString (&sv_client->netchan.message, "Usage: challenge-response <response>\n");
+		return;
+	}
+
+	if (sv.time - sv_client->login_request_time < LOGIN_MIN_RETRY_TIME || !sv_client->challenge[0]) {
+		MSG_WriteByte (&sv_client->netchan.message, svc_print);
+		MSG_WriteByte (&sv_client->netchan.message, PRINT_HIGH);
+		MSG_WriteString (&sv_client->netchan.message, "Please wait and try again\n");
+		return;
+	}
+
+	Central_VerifyChallengeResponse(sv_client, sv_client->challenge, Cmd_Argv(1));
+}
+
+void Cmd_Logout_f(void)
+{
+	if (sv_client->login[0]) {
+		SV_BroadcastPrintf(PRINT_HIGH, "%s logged out\n", sv_client->name);
+	}
+
+	sv_client->login[0] = '\0';
+	sv_client->logged = 0;
+}
+// } Central login
+#endif
 
 void SV_DemoList_f(void);
 void SV_DemoListRegex_f(void);
@@ -2920,6 +3120,14 @@ void SV_Give_f (void);
 void SV_Noclip_f (void);
 void SV_Fly_f (void);
 // }
+
+#if defined(SERVERONLY) && defined(WWW_INTEGRATION)
+// { central login
+void Cmd_Login_f(void);
+void Cmd_Logout_f(void);
+void Cmd_ChallengeResponse_f(void);
+// }
+#endif
 
 typedef struct
 {
@@ -3003,8 +3211,13 @@ static ucmd_t ucmds[] =
 
 	{"pext", Cmd_PEXT_f, false}, // user reply with supported protocol extensions.
 
-	{NULL, NULL}
+#if defined(SERVERONLY) && defined(WWW_INTEGRATION)
+	{"login", Cmd_Login_f, false},
+	{"login-response", Cmd_ChallengeResponse_f, false},
+	{"logout", Cmd_Logout_f, false},
+#endif
 
+	{NULL, NULL}
 };
 
 static qbool SV_ExecutePRCommand (void)
@@ -3176,15 +3389,20 @@ void SV_PreRunCmd(void)
 SV_RunCmd
 ===========
 */
-void SV_RunCmd (usercmd_t *ucmd, qbool inside) //bliP: 24/9
+void SV_RunCmd (usercmd_t *ucmd, qbool inside, qbool second_attempt) //bliP: 24/9
 {
 	int i, n;
 	vec3_t originalvel, offset;
 	qbool onground;
 	//bliP: 24/9 anti speed ->
 	int tmp_time;
+	int blocked;
 
-	if (!inside && (int)sv_speedcheck.value)
+	if (!inside && (int)sv_speedcheck.value
+#ifdef USE_PR2
+		&& !sv_client->isBot
+#endif
+	)
 	{
 		/* AM101 method */
 		tmp_time = Q_rint((realtime - sv_client->last_check) * 1000); // ie. Old 'timepassed'
@@ -3227,10 +3445,10 @@ void SV_RunCmd (usercmd_t *ucmd, qbool inside) //bliP: 24/9
 		int oldmsec;
 		oldmsec = ucmd->msec;
 		cmd.msec = oldmsec/2;
-		SV_RunCmd (&cmd, true);
+		SV_RunCmd (&cmd, true, second_attempt);
 		cmd.msec = oldmsec/2;
 		cmd.impulse = 0;
-		SV_RunCmd (&cmd, true);
+		SV_RunCmd (&cmd, true, second_attempt);
 		return;
 	}
 
@@ -3252,9 +3470,9 @@ void SV_RunCmd (usercmd_t *ucmd, qbool inside) //bliP: 24/9
 
 	// clamp view angles
 	ucmd->angles[PITCH] = bound(sv_minpitch.value, ucmd->angles[PITCH], sv_maxpitch.value);
-	if (!sv_player->v.fixangle)
+	if (!sv_player->v.fixangle && ! second_attempt)
 		VectorCopy (ucmd->angles, sv_player->v.v_angle);
-	
+
 	// model angles
 	// show 1/3 the pitch angle and all the roll angle
 	if (sv_player->v.health > 0)
@@ -3271,7 +3489,8 @@ void SV_RunCmd (usercmd_t *ucmd, qbool inside) //bliP: 24/9
 	if (sv_frametime > 0.1)
 		sv_frametime = 0.1;
 
-	if (!sv_client->spectator)
+	// Don't run think function twice...
+	if (!sv_client->spectator && !second_attempt)
 	{
 		vec3_t	oldvelocity;
 		float	old_teleport_time;
@@ -3294,11 +3513,12 @@ void SV_RunCmd (usercmd_t *ucmd, qbool inside) //bliP: 24/9
 		}
 
 		if ( onground && originalvel[2] < 0 && sv_player->v.velocity[2] == 0 &&
-		originalvel[0] == sv_player->v.velocity[0] &&
-		originalvel[1] == sv_player->v.velocity[1] ) {
+		     originalvel[0] == sv_player->v.velocity[0] &&
+		     originalvel[1] == sv_player->v.velocity[1] )
+		{
 			// don't let KTeams mess with physics
 			sv_player->v.velocity[2] = originalvel[2];
-		   }
+		}
 
 		SV_RunThink (sv_player);
 	}
@@ -3341,7 +3561,34 @@ FIXME
 	movevars.pground = ((int)pm_pground.value != 0);
 	
 	// do the move
-	PM_PlayerMove ();
+	blocked = PM_PlayerMove ();
+
+#ifdef USE_PR2
+	// This is a temporary hack for Frogbots, who adjust after bumping into things
+	// Better would be to provide a way to simulate a move command, but at least this doesn't require API change
+	if (blocked && !second_attempt && sv_client->isBot && sv_player->v.blocked)
+	{
+		pr_global_struct->self = EDICT_TO_PROG(sv_player);
+
+		// Don't store in the bot's entity as we will run this again
+		VectorSubtract (pmove.origin, offset, pr_global_struct->trace_endpos);
+		VectorCopy (pmove.velocity, pr_global_struct->trace_plane_normal);
+		if (pmove.onground)
+		{
+			pr_global_struct->trace_allsolid = (int) sv_player->v.flags | FL_ONGROUND;
+			pr_global_struct->trace_ent = EDICT_TO_PROG(EDICT_NUM(pmove.physents[pmove.groundent].info));
+		} else {
+			pr_global_struct->trace_allsolid = (int) sv_player->v.flags & ~FL_ONGROUND;
+		}
+
+		// Give the mod a chance to replace the command
+		PR_EdictBlocked (sv_player->v.blocked);
+
+		// Run the command again
+		SV_RunCmd (ucmd, false, true);
+		return;
+	}
+#endif
 
 	// get player state back out of pmove
 	sv_client->jump_held = pmove.jump_held;
@@ -3360,6 +3607,7 @@ FIXME
 
 	VectorSubtract (pmove.origin, offset, sv_player->v.origin);
 	VectorCopy (pmove.velocity, sv_player->v.velocity);
+
 	VectorCopy (pmove.angles, sv_player->v.v_angle);
 
 	if (sv_player->v.solid != SOLID_NOT)
@@ -3426,6 +3674,25 @@ void SV_PostRunCmd(void)
 	}
 }
 
+// SV_RotateCmd
+// Rotates client command so a high-ping player can better control direction as they exit teleporters on high-ping
+void SV_RotateCmd(client_t* cl, usercmd_t* cmd)
+{
+	if (cl->lastteleport_teleport) {
+		static vec3_t up = { 0, 0, 1 };
+		vec3_t direction = { cmd->sidemove, cmd->forwardmove, 0 };
+		vec3_t result;
+
+		RotatePointAroundVector(result, up, direction, cl->lastteleport_teleportyaw);
+
+		cmd->sidemove = result[0];
+		cmd->forwardmove = result[1];
+	}
+	else {
+		cmd->angles[YAW] = (cl->edict)->v.angles[YAW];
+	}
+}
+
 /*
 ===================
 SV_ExecuteClientMove
@@ -3437,7 +3704,7 @@ packets were dropped)
 static void SV_ExecuteClientMove (client_t *cl, usercmd_t oldest, usercmd_t oldcmd, usercmd_t newcmd)
 {
 	int net_drop;
-	
+
 	if (sv.paused)
 		return;
 
@@ -3451,21 +3718,20 @@ static void SV_ExecuteClientMove (client_t *cl, usercmd_t oldest, usercmd_t oldc
 	{
 		while (net_drop > 2)
 		{
-			SV_RunCmd (&cl->lastcmd, false);
-	SV_PostRunCmd();
+			SV_RunCmd (&cl->lastcmd, false, false);
+			SV_PostRunCmd();
 			net_drop--;
 		}
 	}
 	if (net_drop > 1) {
-		SV_RunCmd (&oldest, false);
+		SV_RunCmd (&oldest, false, false);
 		SV_PostRunCmd();
 	}
 	if (net_drop > 0) {
-		SV_RunCmd (&oldcmd, false);
+		SV_RunCmd (&oldcmd, false, false);
 		SV_PostRunCmd();
 	}
-	SV_RunCmd (&newcmd, false);
-
+	SV_RunCmd (&newcmd, false, false);
 	SV_PostRunCmd();
 }
 
@@ -3652,9 +3918,15 @@ void SV_ExecuteClientMessage (client_t *cl)
 			}*/
 			//<-
 
+#ifndef SERVERONLY
+			MSG_ReadDeltaUsercmd (&nullcmd, &oldest, PROTOCOL_VERSION);
+			MSG_ReadDeltaUsercmd (&oldest, &oldcmd, PROTOCOL_VERSION);
+			MSG_ReadDeltaUsercmd (&oldcmd, &newcmd, PROTOCOL_VERSION);
+#else
 			MSG_ReadDeltaUsercmd (&nullcmd, &oldest);
 			MSG_ReadDeltaUsercmd (&oldest, &oldcmd);
 			MSG_ReadDeltaUsercmd (&oldcmd, &newcmd);
+#endif
 
 			if ( cl->state != cs_spawned )
 				break;
@@ -3682,6 +3954,21 @@ void SV_ExecuteClientMessage (client_t *cl)
 				Con_DPrintf ("Failed command checksum for %s(%d) (%d != %d)\n",
 					cl->name, cl->netchan.incoming_sequence, checksum, calculatedChecksum);
 				return;
+			}
+
+			if (cl->mvdprotocolextensions1 & MVD_PEXT1_HIGHLAGTELEPORT) {
+				if (cl->lastteleport_outgoingseq && cl->netchan.incoming_acknowledged < cl->lastteleport_outgoingseq) {
+					if (cl->netchan.incoming_sequence - 2 > cl->lastteleport_incomingseq) {
+						SV_RotateCmd(cl, &oldest);
+					}
+					if (cl->netchan.incoming_sequence - 1 > cl->lastteleport_incomingseq) {
+						SV_RotateCmd(cl, &oldcmd);
+					}
+					SV_RotateCmd(cl, &newcmd);
+				}
+				else {
+					cl->lastteleport_outgoingseq = 0;
+				}
 			}
 
 			SV_ExecuteClientMove (cl, oldest, oldcmd, newcmd);

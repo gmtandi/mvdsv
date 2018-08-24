@@ -110,12 +110,10 @@ void SV_Logfile (int sv_log, qbool newlog)
 
 	for (i = 0; i < 1000; i++)
 	{
-		FILE *f;
 		snprintf (name, sizeof(name), "%s/%s%d_%04d.log", sv_logdir.string, logs[sv_log].file_name, sv_port, i);
 
-		if (!(f = fopen(name, "r")))
+		if (!COM_FileExists(name))
 			break; // file doesn't exist
-		fclose(f);
 	}
 
 	if (!newlog) //use last log if possible
@@ -456,11 +454,15 @@ void SV_Map (qbool now)
 		}
 		// <-
 
-		SV_SpawnServer (level, !strcasecmp(Cmd_Argv(0), "devmap"), entityfile);
+		SV_SpawnServer (level, !strcasecmp(Cmd_Argv(0), "devmap"), entityfile, false);
 
+#ifdef SERVERONLY
 		SV_BroadcastCommand ("changing\n"
-							 "reconnect\n");
+		                     "reconnect\n");
 		SV_SendMessagesToAll ();
+#else
+		SV_BroadcastCommand ("reconnect\n");
+#endif
 
 		return;
 	}
@@ -489,6 +491,9 @@ void SV_Map (qbool now)
 	}
 
 	changed = true;
+#ifndef SERVERONLY
+	com_serveractive = true;
+#endif
 }
 
 void SV_Map_f (void)
@@ -529,6 +534,7 @@ void SV_ListFiles_f (void)
 	dirname = Cmd_Argv(1);
 	SV_ReplaceChar(dirname, '\\', '/');
 
+	// Double-check then move to FS_UnsafeFilename() ?
 	if (	!strncmp(dirname, "../", 3) || strstr(dirname, "/../") || *dirname == '/'
 	        ||	( (i = strlen(dirname)) < 3 ? 0 : !strncmp(dirname + i - 3, "/..", 4) )
 	        ||	!strncmp(dirname, "..", 3)
@@ -1362,8 +1368,10 @@ void SV_SendServerInfoChange(char *key, char *value)
 void SV_ServerinfoChanged (char *key, char *string)
 {
 	// force serverinfo "0" vars to be "".
-	if (!strcmp(string, "0"))
+	// meag: deathmatch is a special case as clients default 'not in serverinfo' to non-coop
+	if (!strcmp(string, "0") && strcmp(key, "deathmatch")) {
 		string = "";
+	}
 
 	if (strcmp(string, Info_ValueForKey (svs.info, key)))
 	{
@@ -1420,7 +1428,7 @@ void SV_Serverinfo_f (void)
 		return;
 	}
 
-	// force serverinfo "0" vars to be "".
+	// force serverinfo "0" vars to be ""
 	if (!strcmp(value, "0"))
 		value = "";
 
@@ -1453,9 +1461,9 @@ void SV_Localinfo_Set (const char *name, const char *value)
 	{
 		pr_global_struct->time = sv.time;
 		pr_global_struct->self = 0;
-		G_INT(OFS_PARM0) = PR_SetTmpString(name);
-		G_INT(OFS_PARM1) = PR_SetTmpString(old_value);
-		G_INT(OFS_PARM2) = PR_SetTmpString(Info_Get(&_localinfo_, name));
+		PR_SetTmpString(&G_INT(OFS_PARM0), name);
+		PR_SetTmpString(&G_INT(OFS_PARM1), old_value);
+		PR_SetTmpString(&G_INT(OFS_PARM2), Info_Get(&_localinfo_, name));
 		PR_ExecuteProgram (mod_localinfoChanged);
 	}
 }
@@ -1783,7 +1791,11 @@ SV_MasterPassword
 */
 void SV_MasterPassword_f (void)
 {
+#ifdef SERVERONLY
 	if (!host_everything_loaded)
+#else
+	if (!server_cfg_done)
+#endif
 		strlcpy(master_rcon_password, Cmd_Argv(1), sizeof(master_rcon_password));
 	else
 		Con_DPrintf("master_rcon_password can be set only in server.cfg\n");

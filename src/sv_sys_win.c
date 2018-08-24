@@ -23,7 +23,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include <io.h>
 
 extern cvar_t sys_restart_on_error;
-extern cvar_t sys_select_timeout;
+extern cvar_t sys_select_timeout, sys_simulation;
 
 cvar_t	sys_nostdout	= {"sys_nostdout", "0"};
 cvar_t	sys_sleep		= {"sys_sleep", "8"};
@@ -351,6 +351,7 @@ void Sys_Quit (qbool restart)
 {
 	if (restart)
 	{
+#ifndef __MINGW32__
 		int maxfd = 131072; // well, should be enough for everyone...
 
 		_set_invalid_parameter_handler(myInvalidParameterHandler); // so close() does not crash our program on invalid handle...
@@ -363,6 +364,7 @@ void Sys_Quit (qbool restart)
 		}
 
 		if (execv(argv[0], com_argv) == -1)
+#endif
 		{
 #ifdef _CONSOLE
 			if (!((int)sys_nostdout.value || isdaemon))
@@ -703,7 +705,6 @@ int Sys_CreateThread(DWORD (WINAPI *func)(void *), void *param)
         CREATE_SUSPENDED,   // creation flags
         &threadid);         // pointer to receive thread ID
 
-    SetThreadPriority(thread, THREAD_PRIORITY_HIGHEST);
     ResumeThread(thread);
 
     return 1;
@@ -720,7 +721,6 @@ main
 int main(int ac, char *av[])
 {
 	double			newtime, time, oldtime;
-	int				j;
 	int				sleep_msec;
 
 	ParseCommandLine (ac, av);
@@ -753,7 +753,9 @@ int main(int ac, char *av[])
 		// the only reason we have a timeout at all is so that if the last
 		// connected client times out, the message would not otherwise
 		// be printed until the next event.
-		NET_Sleep ((int)sys_select_timeout.value / 1000, false);
+		if (!sys_simulation.value) {
+			NET_Sleep((int)sys_select_timeout.value / 1000, false);
+		}
 
 		// find time passed since last cycle
 		newtime = Sys_DoubleTime ();
@@ -847,8 +849,9 @@ int APIENTRY WinMain(   HINSTANCE   hInstance,
 		// the only reason we have a timeout at all is so that if the last
 		// connected client times out, the message would not otherwise
 		// be printed until the next event.
-
-		NET_Sleep ((int)sys_select_timeout.value / 1000, false);
+		if (!sys_simulation.value) {
+			NET_Sleep((int)sys_select_timeout.value / 1000, false);
+		}
 
 		// find time passed since last cycle
 		newtime = Sys_DoubleTime ();

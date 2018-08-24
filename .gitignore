@@ -19,3 +19,15 @@ src/Makefile.vm
 mvdsv
 !qwdtools/
 qwdtools
+.venv/
+build_*/*
+.ninja_deps
+.ninja_log
+build.ninja
+compile_commands.json
+meson-*/
+build/vs/.vs/*
+build/vs/*.exe
+build/vs/*.db
+build/vs/*.def
+build/vs/*.ilk

@@ -23,13 +23,18 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #ifdef SERVERONLY
 
-qbool		host_initialized;
-qbool		host_everything_loaded;	// true if OnChange() applied to every var, end of Host_Init()
+qbool       host_initialized;
+qbool       host_everything_loaded;	// true if OnChange() applied to every var, end of Host_Init()
 
-double		curtime;			// not bounded or scaled, shared by local client and server.
-double		realtime;			// affected by pause, you should not use it unless it something like physics and such.
+double      curtime;			// not bounded or scaled, shared by local client and server.
+double      realtime;			// affected by pause, you should not use it unless it something like physics and such.
 
-static int	host_hunklevel;
+static int  host_hunklevel;
+
+#else
+
+qbool       server_cfg_done = false;
+double      realtime;			// affected by pause, you should not use it unless it something like physics and such.
 
 #endif
 
@@ -51,6 +56,7 @@ cvar_t	sys_select_timeout = {"sys_select_timeout", "10000", 0, OnChange_sysselec
 cvar_t	sys_restart_on_error = {"sys_restart_on_error", "0"};
 
 #ifdef SERVERONLY
+cvar_t  sys_simulation = { "sys_simulation", "0" };
 cvar_t	developer = {"developer", "0"};		// show extra messages
 cvar_t	version = {"version", "", CVAR_ROM};
 #endif
@@ -69,7 +75,6 @@ extern cvar_t password;
 #endif
 
 cvar_t	sv_hashpasswords = {"sv_hashpasswords", "1"}; // 0 - plain passwords; 1 - hashed passwords
-cvar_t	telnet_password = {"telnet_password", ""}; // password for login via telnet
 cvar_t	sv_crypt_rcon = {"sv_crypt_rcon", "1"}; // use SHA1 for encryption of rcon_password and using timestamps
 // Time in seconds during which in rcon command this encryption is valid (change only with master_rcon_password).
 cvar_t	sv_timestamplen = {"sv_timestamplen", "60"};
@@ -142,7 +147,7 @@ cvar_t	sv_default_name = {"sv_default_name", "unnamed"};
 void sv_mod_msg_file_OnChange(cvar_t *cvar, char *value, qbool *cancel);
 cvar_t	sv_mod_msg_file = {"sv_mod_msg_file", "", CVAR_NONE, sv_mod_msg_file_OnChange};
 
-cvar_t	sv_reliable_sound = {"sv_reliable_sound", "0"};
+cvar_t  sv_reliable_sound = {"sv_reliable_sound", "0"};
 
 //
 // game rules mirrored in svs.info
@@ -172,10 +177,16 @@ cvar_t sv_registrationinfo = {"sv_registrationinfo", ""}; // text shown before "
 cvar_t registered = {"registered", "1", CVAR_ROM};
 
 cvar_t	sv_halflifebsp = {"halflifebsp", "0", CVAR_ROM};
+cvar_t  sv_bspversion = {"sv_bspversion", "1", CVAR_ROM};
+
+// If set, don't send broadcast messages, entities or player info to ServeMe bot
+cvar_t sv_serveme_fix = { "sv_serveme_fix", "1", CVAR_ROM };
 
 #ifdef FTE_PEXT_FLOATCOORDS
 cvar_t sv_bigcoords = {"sv_bigcoords", "", CVAR_SERVERINFO};
 #endif
+
+cvar_t sv_extlimits = { "sv_extlimits", "2" };
 
 qbool sv_error = false;
 
@@ -222,8 +233,12 @@ void SV_Shutdown (char *finalmsg)
 	if (sv.mvdrecording)
 		SV_MVDStop_f();
 
-#ifdef SERVERONLY
-	NET_Shutdown ();
+#ifndef SERVER_ONLY
+	NET_CloseServer ();
+#endif
+
+#if defined(SERVERONLY) && defined(WWW_INTEGRATION)
+	Central_Shutdown();
 #endif
 
 	// Shutdown game.
@@ -308,9 +323,14 @@ void SV_FinalMessage (const char *message)
 	MSG_WriteByte (&net_message, svc_disconnect);
 
 	for (i=0, cl = svs.clients ; i<MAX_CLIENTS ; i++, cl++)
-		if (cl->state >= cs_spawned)
-			Netchan_Transmit (&cl->netchan, net_message.cursize
-			                  , net_message.data);
+		if (cl->state >= cs_spawned
+#ifdef USE_PR2
+			&& !cl->isBot
+#endif
+		) {
+			Netchan_Transmit(&cl->netchan, net_message.cursize
+				, net_message.data);
+		}
 }
 
 
@@ -417,8 +437,9 @@ int SV_CalcPing (client_t *cl)
 	ping = 0;
 	count = 0;
 #ifdef USE_PR2
-	if( cl->isBot )
-		return ((int) (sv_mintic.value * 1000));
+	if (cl->isBot) {
+		return 10;
+	}
 #endif
 	for (frame = cl->frames, i=0 ; i<UPDATE_BACKUP ; i++, frame++)
 	{
@@ -528,6 +549,18 @@ CONNECTIONLESS COMMANDS
 */
 
 /*
+SVC_QTVStreams
+
+Responds with info on connected QTV users
+*/
+static void SVC_QTVUsers (void)
+{
+	SV_BeginRedirect (RD_PACKET);
+	QTV_Streams_UserList ();
+	SV_EndRedirect ();
+}
+
+/*
 ================
 SVC_Status
 
@@ -535,12 +568,13 @@ Responds with all the info that qplug or qspy can see
 This message can be up to around 5k with worst case string lengths.
 ================
 */
-#define STATUS_OLDSTYLE					0
-#define	STATUS_SERVERINFO				1
-#define	STATUS_PLAYERS					2
-#define	STATUS_SPECTATORS				4
-#define	STATUS_SPECTATORS_AS_PLAYERS	8 //for ASE - change only frags: show as "S"
-#define STATUS_SHOWTEAMS				16
+#define STATUS_OLDSTYLE                 0
+#define STATUS_SERVERINFO               1
+#define STATUS_PLAYERS                  2
+#define STATUS_SPECTATORS               4
+#define STATUS_SPECTATORS_AS_PLAYERS    8 //for ASE - change only frags: show as "S"
+#define STATUS_SHOWTEAMS                16
+#define STATUS_SHOWQTV                  32
 
 static void SVC_Status (void)
 {
@@ -593,6 +627,9 @@ static void SVC_Status (void)
 					Con_Printf ("\n");
 			}
 		}
+
+	if (opt & STATUS_SHOWQTV)
+		QTV_Streams_List ();
 	SV_EndRedirect ();
 }
 
@@ -792,6 +829,21 @@ static void SVC_GetChallenge (void)
 		over += 4;
 	}
 #endif // PROTOCOL_VERSION_FTE2
+
+#ifdef PROTOCOL_VERSION_MVD1
+	// tell the client what mvdsv extensions we support
+	if (svs.mvdprotocolextension1) {
+		int lng;
+
+		lng = LittleLong(PROTOCOL_VERSION_MVD1);
+		memcpy(over, &lng, sizeof(int));
+		over += 4;
+
+		lng = LittleLong(svs.mvdprotocolextension1);
+		memcpy(over, &lng, sizeof(int));
+		over += 4;
+	}
+#endif
 
 	Netchan_OutOfBand(NS_SERVER, net_from, over-buf, (byte*) buf);
 }
@@ -1022,7 +1074,6 @@ qbool CheckReConnect( netadr_t adr, int qport )
 
 			cl->state = cs_free;
 			Con_Printf ("%s:reconnect\n", NET_AdrToString (adr));
-
 			break;
 		}
 	}
@@ -1135,6 +1186,10 @@ static void SVC_DirectConnect (void)
 	unsigned int protextsupported2 = 0;
 #endif // PROTOCOL_VERSION_FTE2
 
+#ifdef PROTOCOL_VERSION_MVD1
+	unsigned int mvdext_supported1 = 0;
+#endif
+
 	// check version/protocol
 	if ( !CheckProtocol( Q_atoi( Cmd_Argv( 1 ) ) ) )
 		return; // wrong protocol number
@@ -1173,6 +1228,13 @@ static void SVC_DirectConnect (void)
 			Con_DPrintf("Client supports 0x%x fte extensions2\n", protextsupported2);
 			break;
 #endif // PROTOCOL_VERSION_FTE2
+
+#ifdef PROTOCOL_VERSION_MVD1
+		case PROTOCOL_VERSION_MVD1:
+			mvdext_supported1 = Q_atoi( Cmd_Argv( 1 ) );
+			Con_DPrintf("Client supports 0x%x mvdsv extensions\n", mvdext_supported1);
+			break;
+#endif
 		}
 	}
 
@@ -1197,10 +1259,9 @@ static void SVC_DirectConnect (void)
 
 	// if at server limits, refuse connection
 
-	if (	(spectator && !SpectatorCanConnect(vip, spass, spectators, vips))
-	     || (!spectator && !PlayerCanConnect(clients))
-         || !newcl
-       )
+	if ((spectator && !SpectatorCanConnect(vip, spass, spectators, vips)) || 
+	    (!spectator && !PlayerCanConnect(clients)) || 
+	    !newcl)
 	{
 		Sys_Printf ("%s:full connect\n", NET_AdrToString (adr));
 
@@ -1254,6 +1315,10 @@ static void SVC_DirectConnect (void)
 	newcl->fteprotocolextensions2 = protextsupported2;
 #endif // PROTOCOL_VERSION_FTE2
 
+#ifdef PROTOCOL_VERSION_MVD1
+	newcl->mvdprotocolextensions1 = mvdext_supported1;
+#endif
+
 	newcl->_userinfo_ctx_.max      = MAX_CLIENT_INFOS;
 	newcl->_userinfoshort_ctx_.max = MAX_CLIENT_INFOS;
 	Info_Convert(&newcl->_userinfo_ctx_, userinfo);
@@ -1294,7 +1359,7 @@ static void SVC_DirectConnect (void)
 	ent->e->free = false;
 	newcl->edict = ent;
 	// restore client name.
-	ent->v.netname = PR_SetString(newcl->name);
+	PR_SetEntityString(ent, ent->v.netname, newcl->name);
 
 	s = ( vip ? va("%d", vip) : "" );
 
@@ -1416,6 +1481,7 @@ static qbool rcon_bandlim (void)
 
 	return false;
 }
+
 //bliP: master rcon/logging ->
 int Rcon_Validate (char *client_string, char *password1)
 {
@@ -1423,51 +1489,44 @@ int Rcon_Validate (char *client_string, char *password1)
 	double difftime_server_client;
 	unsigned int i;
 
-
-	if (rcon_bandlim())
+	if (rcon_bandlim()) {
 		return 0;
+	}
 
-	if (!strlen (password1))
+	if (!strlen(password1)) {
 		return 0;
+	}
 
-	if ((int)sv_crypt_rcon.value)
-	{
+	if ((int)sv_crypt_rcon.value) {
 		time(&server_time);
-		for (i = 0; i < sizeof(client_time) * 2; i += 2)
-		{
-			//			Sys_Printf("1) %c%c, %d\n", (Cmd_Argv(1) + DIGEST_SIZE * 2)[i], (Cmd_Argv(1) + DIGEST_SIZE * 2)[i + 1], client_time);
-
-			client_time +=  (char2int((unsigned char)(Cmd_Argv(1) + DIGEST_SIZE * 2)[i]) << (4 + i * 4)) +
-			                (char2int((unsigned char)(Cmd_Argv(1) + DIGEST_SIZE * 2)[i + 1]) << (i * 4));
-			//			Sys_Printf("2) %d, %d, %d\n", c1 << (4 + i * 4), c2 << (i * 4), client_time);
+		for (i = 0; i < sizeof(client_time) * 2; i += 2) {
+			client_time += (char2int((unsigned char)(Cmd_Argv(1) + DIGEST_SIZE * 2)[i]) << (4 + i * 4)) +
+			               (char2int((unsigned char)(Cmd_Argv(1) + DIGEST_SIZE * 2)[i + 1]) << (i * 4));
 		}
 		difftime_server_client = difftime(server_time, client_time);
-		//		Sys_Printf("3) %f, %d, %d\n", difftime_server_client, client_time, server_time);
 
-		if (!(int)sv_timestamplen.value)
-			if (difftime_server_client > (double) sv_timestamplen.value ||
-			        difftime_server_client < - (double) sv_timestamplen.value)
+		if (!(int)sv_timestamplen.value) {
+			if (difftime_server_client > (double)sv_timestamplen.value || difftime_server_client < -(double)sv_timestamplen.value) {
 				return 0;
-		SHA1_Init();
-		SHA1_Update(Cmd_Argv(0));
-		SHA1_Update(" ");
-		SHA1_Update(password1);
-		SHA1_Update(Cmd_Argv(1) + DIGEST_SIZE * 2);
-		SHA1_Update(" ");
-		for (i = 2; (int) i < Cmd_Argc(); i++)
-		{
-			SHA1_Update(Cmd_Argv(i));
-			SHA1_Update(" ");
+			}
 		}
-//		sha1 = SHA1_Final();
-//		Con_Printf("client_string = %s\nserver_string = %s\nsha1 = %s\n", client_string, server_string, sha1);
-//		Con_Printf("server_string_len = %d, strlen(server_string) = %d\n", server_string_len, strlen(server_string));
-		if (strncmp (Cmd_Argv(1), SHA1_Final(), DIGEST_SIZE * 2))
+		SHA1_Init();
+		SHA1_Update((unsigned char*)Cmd_Argv(0));
+		SHA1_Update((unsigned char*)" ");
+		SHA1_Update((unsigned char*)password1);
+		SHA1_Update((unsigned char*)Cmd_Argv(1) + DIGEST_SIZE * 2);
+		SHA1_Update((unsigned char*)" ");
+		for (i = 2; (int) i < Cmd_Argc(); i++) {
+			SHA1_Update((unsigned char*)Cmd_Argv(i));
+			SHA1_Update((unsigned char*)" ");
+		}
+		if (strncmp(Cmd_Argv(1), SHA1_Final(), DIGEST_SIZE * 2)) {
 			return 0;
+		}
 	}
-	else
-		if (strcmp (Cmd_Argv(1), password1))
-			return 0;
+	else if (strcmp(Cmd_Argv(1), password1)) {
+		return 0;
+	}
 	return 1;
 }
 
@@ -1476,18 +1535,16 @@ int Master_Rcon_Validate (void)
 	int i, client_string_len = Cmd_Argc() + 1;
 	char *client_string;
 
-
-	for (i = 0; i < Cmd_Argc(); ++i)
+	for (i = 0; i < Cmd_Argc(); ++i) {
 		client_string_len += strlen(Cmd_Argv(i));
+	}
 	client_string = (char *) Q_malloc (client_string_len);
+
 	*client_string = 0;
-	for (i = 0; i < Cmd_Argc(); ++i)
-	{
+	for (i = 0; i < Cmd_Argc(); ++i) {
 		strlcat(client_string, Cmd_Argv(i), client_string_len);
 		strlcat(client_string, " ", client_string_len);
 	}
-	//	Sys_Printf("client_string = %s\nclient_string_len = %d, strlen(client_string) = %d\n",
-	//		client_string, client_string_len, strlen(client_string));
 	i = Rcon_Validate (client_string, master_rcon_password);
 	Q_free(client_string);
 	return i;
@@ -1812,6 +1869,8 @@ static void SV_ConnectionlessPacket (void)
 		SVC_DemoListRegex ();
 	else if (!strcmp(c,"demolistregex"))
 		SVC_DemoListRegex ();
+	else if (!strcmp(c,"qtvusers"))
+		SVC_QTVUsers ();
 	else
 		Con_Printf ("bad connectionless packet from %s:\n%s\n"
 		            , NET_AdrToString (net_from), s);
@@ -2246,7 +2305,7 @@ qbool SV_FilterPacket (void)
 
 // { server internal BAN support
 
-#define AF_REAL_ADMIN  (1<<1) // pass/vip granted admin.
+#define AF_REAL_ADMIN    (1<<1)    // pass/vip granted admin.
 
 void Do_BanList(ipfiltertype_t ipft)
 {
@@ -2665,8 +2724,11 @@ static char *DecodeArgs(char *args)
 			}
 			*p++ = '\"';
 		}
-		else while (*args > 32)
+		else {
+			while (*args > 32) {
 				*p++ = *args++;
+			}
+		}
 	}
 
 	*p = 0;
@@ -3111,7 +3173,6 @@ void SV_Frame (double time1)
 	static double start, end;
 	double demo_start, demo_end;
 
-
 	start = Sys_DoubleTime ();
 	svs.stats.idle += start - end;
 
@@ -3158,13 +3219,21 @@ void SV_Frame (double time1)
 	SV_ReadPackets ();
 
 	// move autonomous things around if enough time has passed
-	if (!sv.paused)
-		SV_Physics ();
+	if (!sv.paused) {
+		SV_Physics();
+#ifdef USE_PR2
+		SV_RunBots();
+#endif
+	}
 	else
 		PausedTic ();
 
 	// send messages back to the clients that had packets read this frame
 	SV_SendClientMessages ();
+
+#if defined(SERVERONLY) && defined(WWW_INTEGRATION)
+	Central_ProcessResponses();
+#endif
 
 	demo_start = Sys_DoubleTime ();
 	SV_SendDemoMessage();
@@ -3241,7 +3310,6 @@ void SV_InitLocal (void)
 	Cvar_Register (&sv_timestamplen);
 	Cvar_Register (&sv_rconlim);
 
-	Cvar_Register (&telnet_password);
 	Cvar_Register (&telnet_log_level);
 
 	Cvar_Register (&frag_log_type);
@@ -3254,7 +3322,6 @@ void SV_InitLocal (void)
 			strlcat(cmd_line, " ", sizeof(cmd_line));
 		strlcat(cmd_line, COM_Argv(i), sizeof(cmd_line));
 	}
-
 	Cvar_Register (&sys_command_line);
 	Cvar_SetROM(&sys_command_line, cmd_line);
 
@@ -3352,10 +3419,14 @@ void SV_InitLocal (void)
 	Cvar_Register (&registered);
 
 	Cvar_Register (&sv_halflifebsp);
+	Cvar_Register (&sv_bspversion);
+	Cvar_Register (&sv_serveme_fix);
 
 #ifdef FTE_PEXT_FLOATCOORDS
 	Cvar_Register (&sv_bigcoords);
 #endif
+
+	Cvar_Register (&sv_extlimits);
 
 	Cvar_Register (&sv_reliable_sound);
 
@@ -3388,9 +3459,28 @@ void SV_InitLocal (void)
 #ifdef FTE_PEXT_FLOATCOORDS
 	svs.fteprotocolextensions |= FTE_PEXT_FLOATCOORDS;
 #endif
+#ifdef FTE_PEXT_MODELDBL
+	svs.fteprotocolextensions |= FTE_PEXT_MODELDBL;
+#endif
+#ifdef FTE_PEXT_ENTITYDBL
+	svs.fteprotocolextensions |= FTE_PEXT_ENTITYDBL;
+#endif
+#ifdef FTE_PEXT_ENTITYDBL2
+	svs.fteprotocolextensions |= FTE_PEXT_ENTITYDBL2;
+#endif
+#ifdef FTE_PEXT_SPAWNSTATIC2
+	svs.fteprotocolextensions |= FTE_PEXT_SPAWNSTATIC2;
+#endif
 
 #ifdef FTE_PEXT2_VOICECHAT
 	svs.fteprotocolextensions2 |= FTE_PEXT2_VOICECHAT;
+#endif
+
+#ifdef MVD_PEXT1_FLOATCOORDS
+	svs.mvdprotocolextension1 |= MVD_PEXT1_FLOATCOORDS;
+#endif
+#ifdef MVD_PEXT1_HIGHLAGTELEPORT
+	svs.mvdprotocolextension1 |= MVD_PEXT1_HIGHLAGTELEPORT;
 #endif
 
 	Info_SetValueForStarKey (svs.info, "*version", SERVER_NAME " " VERSION_NUMBER, MAX_SERVERINFO_STRING);
@@ -3429,7 +3519,6 @@ Pull specific info from a newly changed userinfo string
 into a more C freindly form.
 =================
 */
-
 void SV_ExtractFromUserinfo (client_t *cl, qbool namechanged)
 {
 	char	*val, *p;
@@ -3621,6 +3710,7 @@ void COM_Init (void)
 {
 	Cvar_Register (&developer);
 	Cvar_Register (&version);
+	Cvar_Register (&sys_simulation);
 
 	Cvar_SetROM(&version, VersionStringFull());
 }
@@ -3663,12 +3753,9 @@ void Host_Init (int argc, char **argv, int default_memsize)
 	extern int		hunk_size;
 	cvar_t			*v;
 
-//	char cfg[MAX_PATH] = {0};
-
 	srand((unsigned)time(NULL));
 
 	COM_InitArgv (argc, argv);
-//	COM_StoreOriginalCmdline(argc, argv);
 
 	Host_InitMemory (default_memsize);
 
@@ -3682,26 +3769,12 @@ void Host_Init (int argc, char **argv, int default_memsize)
 	FS_Init ();
 	NET_Init ();
 
-// ??????????????
-//	snprintf(cfg, sizeof(cfg), "%s", cfg_name);
-//	COM_ForceExtensionEx (cfg, ".cfg", sizeof (cfg));
-//	Cbuf_AddText(va("cfg_load %s\n", cfg));
-//	Cbuf_Execute();
-//
-//	Cbuf_AddEarlyCommands ();
-//	Cbuf_Execute ();
-// ????????????
-
 	Netchan_Init ();
 
 	Sys_Init ();
 	CM_Init ();
 
 	SV_Init ();
-
-// ???????????
-//	Cvar_CleanUpTempVars ();
-// ???????????
 
 	Hunk_AllocName (0, "-HOST_HUNKLEVEL-");
 	host_hunklevel = Hunk_LowMark ();
@@ -3713,9 +3786,6 @@ void Host_Init (int argc, char **argv, int default_memsize)
 	// same for serverinfo and may be this fix something also.
 	for ( v = NULL; (v = Cvar_Next ( v )); )
 	{
-//		if ( !v->modified )
-//			continue; // not modified even that strange at this moment
-
 		if ( Cvar_GetFlags( v ) & (CVAR_ROM) )
 			continue;
 
@@ -3783,6 +3853,13 @@ void SV_Init (void)
 
 	SV_MVDInit ();
 	Login_Init ();
+#ifndef SERVERONLY
+	server_cfg_done = true;
+#endif
+
+#if defined(SERVERONLY) && defined(WWW_INTEGRATION)
+	Central_Init ();
+#endif
 }
 
 /*

@@ -21,25 +21,26 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #include "qwsvdef.h"
 
-// minimal chache which can be used for demos, must be few times greater than DEMO_FLUSH_CACHE_IF_LESS_THAN_THIS
+// minimal cache which can be used for demos, must be few times greater than DEMO_FLUSH_CACHE_IF_LESS_THAN_THIS
 #define DEMO_CACHE_MIN_SIZE 0x1000000
 
 // flush demo cache if we have less than this free bytes
 #define DEMO_FLUSH_CACHE_IF_LESS_THAN_THIS	65536
 
 
-void	sv_demoDir_OnChange(cvar_t *cvar, char *value, qbool *cancel);
+static void sv_demoDir_OnChange(cvar_t *cvar, char *value, qbool *cancel);
 
-cvar_t	sv_demoUseCache		= {"sv_demoUseCache",	"0"};
-cvar_t	sv_demoCacheSize	= {"sv_demoCacheSize",	"0", CVAR_ROM};
-cvar_t	sv_demoMaxDirSize	= {"sv_demoMaxDirSize",	"102400"};
-cvar_t	sv_demoClearOld		= {"sv_demoClearOld",	"0"};
-cvar_t	sv_demoDir			= {"sv_demoDir",		"demos", 0, sv_demoDir_OnChange};
-cvar_t	sv_demofps			= {"sv_demofps",		"30"};
-cvar_t	sv_demoIdlefps		= {"sv_demoIdlefps",	"10"};
-cvar_t	sv_demoPings		= {"sv_demopings",		"3"};
-cvar_t	sv_demoMaxSize		= {"sv_demoMaxSize",	"20480"};
-cvar_t	sv_demoExtraNames	= {"sv_demoExtraNames", "0"};
+cvar_t  sv_demoUseCache     = {"sv_demoUseCache",   "0"};
+cvar_t  sv_demoCacheSize    = {"sv_demoCacheSize",  "0", CVAR_ROM};
+cvar_t  sv_demoMaxDirSize   = {"sv_demoMaxDirSize", "102400"};
+cvar_t  sv_demoClearOld     = {"sv_demoClearOld",   "0"};
+cvar_t  sv_demoDir          = {"sv_demoDir",        "demos", 0, sv_demoDir_OnChange};
+cvar_t  sv_demoDirAlt       = {"sv_demoDirAlt",     "", 0, sv_demoDir_OnChange };
+cvar_t  sv_demofps          = {"sv_demofps",        "30"};
+cvar_t  sv_demoIdlefps      = {"sv_demoIdlefps",    "10"};
+cvar_t  sv_demoPings        = {"sv_demopings",      "3"};
+cvar_t  sv_demoMaxSize      = {"sv_demoMaxSize",    "20480"};
+cvar_t  sv_demoExtraNames   = {"sv_demoExtraNames", "0"};
 
 cvar_t	sv_demoPrefix		= {"sv_demoPrefix",		""};
 cvar_t	sv_demoSuffix		= {"sv_demoSuffix",		""};
@@ -54,6 +55,24 @@ cvar_t	sv_silentrecord		= {"sv_silentrecord",   "0"};
 cvar_t	extralogname		= {"extralogname",		"unset"}; // no sv_ prefix? WTF!
 
 mvddest_t			*singledest;
+
+// only one .. is allowed (security)
+static void sv_demoDir_OnChange(cvar_t *cvar, char *value, qbool *cancel)
+{
+	if (cvar == &sv_demoDir && !value[0]) {
+		*cancel = true;
+		return;
+	}
+
+	if (value[0] == '.' && value[1] == '.') {
+		value += 2;
+	}
+
+	if (strstr(value, "/..")) {
+		*cancel = true;
+		return;
+	}
+}
 
 // { MVD writing functions, just wrappers
 
@@ -801,7 +820,7 @@ static mvddest_t *SV_InitRecordFile (char *name)
 
 	if ( !sv_silentrecord.value )
 		SV_BroadcastPrintf (PRINT_CHAT, "Server starts recording (%s):\n%s\n",
-						(dst->desttype == DEST_BUFFEREDFILE) ? "memory" : "disk", s+1);
+		                    (dst->desttype == DEST_BUFFEREDFILE) ? "memory" : "disk", s+1);
 	Cvar_SetROM(&serverdemo, dst->name);
 
 	strlcpy(path, name, MAX_OSPATH);
@@ -1233,7 +1252,7 @@ void SV_MVD_SendInitialGamestate(mvddest_t *dest)
 	MSG_WriteFloat (&buf, sv.time);
 
 	// send full levelname
-	MSG_WriteString (&buf, PR_GetString(sv.edicts->v.message));
+	MSG_WriteString (&buf, PR_GetEntityString(sv.edicts->v.message));
 
 	// send the movevars
 	MSG_WriteFloat(&buf, movevars.gravity);
@@ -1319,8 +1338,75 @@ void SV_MVD_SendInitialGamestate(mvddest_t *dest)
 		SZ_Clear (&buf);
 	}
 
-	// prespawn
+	// static entities
+	{
+		int i, j;
+		entity_state_t from = { 0 };
 
+		for (i = 0; i < sv.static_entity_count; ++i) {
+			entity_state_t* s = &sv.static_entities[i];
+
+			if (buf.cursize >= MAX_MSGLEN/2) {
+				SV_WriteRecordMVDMessage (&buf);
+				SZ_Clear (&buf);
+			}
+
+			if (demo.recorder.fteprotocolextensions & FTE_PEXT_SPAWNSTATIC2) {
+				MSG_WriteByte(&buf, svc_fte_spawnstatic2);
+				SV_WriteDelta(&demo.recorder, &from, s, &buf, true);
+			}
+			else if (s->modelindex < 256) {
+				MSG_WriteByte(&buf, svc_spawnstatic);
+				MSG_WriteByte(&buf, s->modelindex);
+				MSG_WriteByte(&buf, s->frame);
+				MSG_WriteByte(&buf, s->colormap);
+				MSG_WriteByte(&buf, s->skinnum);
+				for (j = 0; j < 3; ++j) {
+					MSG_WriteCoord(&buf, s->origin[j]);
+					MSG_WriteAngle(&buf, s->angles[j]);
+				}
+			}
+		}
+	}
+
+	// entity baselines
+	{
+		static entity_state_t empty_baseline = { 0 };
+		int i, j;
+
+		for (i = 0; i < sv.num_baseline_edicts; ++i) {
+			edict_t* svent = EDICT_NUM(i);
+			entity_state_t* s = &svent->e->baseline;
+
+			if (buf.cursize >= MAX_MSGLEN/2) {
+				SV_WriteRecordMVDMessage (&buf);
+				SZ_Clear (&buf);
+			}
+
+			if (!s->number || !s->modelindex || !memcmp(s, &empty_baseline, sizeof(empty_baseline))) {
+				continue;
+			}
+
+			if (demo.recorder.fteprotocolextensions & FTE_PEXT_SPAWNSTATIC2) {
+				MSG_WriteByte(&buf, svc_fte_spawnbaseline2);
+				SV_WriteDelta(&demo.recorder, &empty_baseline, s, &buf, true);
+			}
+			else if (s->modelindex < 256) {
+				MSG_WriteByte(&buf, svc_spawnbaseline);
+				MSG_WriteShort(&buf, i);
+				MSG_WriteByte(&buf, s->modelindex);
+				MSG_WriteByte(&buf, s->frame);
+				MSG_WriteByte(&buf, s->colormap);
+				MSG_WriteByte(&buf, s->skinnum);
+				for (j = 0; j < 3; j++) {
+					MSG_WriteCoord(&buf, s->origin[j]);
+					MSG_WriteAngle(&buf, s->angles[j]);
+				}
+			}
+		}
+	}
+
+	// prespawn
 	for (n = 0; n < sv.num_signon_buffers; n++)
 	{
 		if (buf.cursize+sv.signon_buffer_size[n] > MAX_MSGLEN/2)
@@ -1489,7 +1575,7 @@ void SV_MVD_SendInitialGamestate(mvddest_t *dest)
 		memset(stats, 0, sizeof(stats));
 
 		stats[STAT_HEALTH]       = ent->v.health;
-		stats[STAT_WEAPON]       = SV_ModelIndex(PR_GetString(ent->v.weaponmodel));
+		stats[STAT_WEAPON]       = SV_ModelIndex(PR_GetEntityString(ent->v.weaponmodel));
 		stats[STAT_AMMO]         = ent->v.currentammo;
 		stats[STAT_ARMOR]        = ent->v.armorvalue;
 		stats[STAT_SHELLS]       = ent->v.ammo_shells;
@@ -1715,6 +1801,7 @@ static void MVD_Init (void)
 	Cvar_Register (&sv_demoMaxDirSize);
 	Cvar_Register (&sv_demoClearOld); //bliP: 24/9 clear old demos
 	Cvar_Register (&sv_demoDir);
+	Cvar_Register (&sv_demoDirAlt);
 	Cvar_Register (&sv_demoPrefix);
 	Cvar_Register (&sv_demoSuffix);
 	Cvar_Register (&sv_onrecordfinish);
@@ -1770,6 +1857,7 @@ void SV_MVDInit (void)
 	Cmd_AddCommand ("sv_lastscores",	SV_LastScores_f);
 	Cmd_AddCommand ("sv_demolist",		SV_DemoList_f);
 	Cmd_AddCommand ("sv_demolistr",		SV_DemoListRegex_f);
+	Cmd_AddCommand ("sv_demolistregex",	SV_DemoListRegex_f);
 	Cmd_AddCommand ("sv_demoremove",	SV_MVDRemove_f);
 	Cmd_AddCommand ("sv_demonumremove",	SV_MVDRemoveNum_f);
 	Cmd_AddCommand ("sv_demoinfoadd",	SV_MVDInfoAdd_f);
@@ -1779,4 +1867,20 @@ void SV_MVDInit (void)
 	Cmd_AddCommand ("script",			SV_Script_f);
 
 	SV_QTV_Init();
+}
+
+const char* SV_MVDDemoName(void)
+{
+	mvddest_t* d;
+
+	for (d = demo.dest; d; d = d->nextdest) {
+		if (d->desttype == DEST_STREAM) {
+			continue; // streams are not saved on to HDD, so ignore it...
+		}
+		if (d->name && d->name[0]) {
+			return d->name;
+		}
+	}
+
+	return NULL;
 }

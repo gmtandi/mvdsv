@@ -21,7 +21,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "qwsvdef.h"
 
 extern cvar_t sys_restart_on_error;
-extern cvar_t sys_select_timeout;
+extern cvar_t sys_select_timeout, sys_simulation;
 
 cvar_t sys_nostdout = {"sys_nostdout", "0"};
 cvar_t sys_extrasleep = {"sys_extrasleep", "0"};
@@ -357,23 +357,43 @@ void Sys_Error (const char *error, ...)
 Sys_DoubleTime
 ================
 */
-double Sys_DoubleTime (void)
+#if (_POSIX_TIMERS > 0) && defined(_POSIX_MONOTONIC_CLOCK)
+#include <time.h>
+double Sys_DoubleTime(void)
+{
+	static unsigned int secbase;
+	struct timespec ts;
+
+#ifdef __linux__
+	clock_gettime(CLOCK_MONOTONIC_RAW, &ts);
+#else
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+#endif
+
+	if (!secbase) {
+		secbase = ts.tv_sec;
+		return ts.tv_nsec / 1000000000.0;
+	}
+
+	return (ts.tv_sec - secbase) + ts.tv_nsec / 1000000000.0;
+}
+#else
+double Sys_DoubleTime(void)
 {
 	struct timeval tp;
 	struct timezone tzp;
-	static int		secbase;
+	static int secbase;
 
 	gettimeofday(&tp, &tzp);
 
-	if (!secbase)
-	{
-		secbase = tp.tv_sec;
-		return tp.tv_usec/1000000.0;
+	if (!secbase) {
+	    secbase = tp.tv_sec;
+	    return tp.tv_usec/1000000.0;
 	}
 
-	return (tp.tv_sec - secbase) + tp.tv_usec/1000000.0;
+	return (tp.tv_sec - secbase) + tp.tv_usec / 1000000.0;
 }
-
+#endif
 /*
 ================
 Sys_ConsoleInput
@@ -719,7 +739,9 @@ int main (int argc, char *argv[])
 		// the only reason we have a timeout at all is so that if the last
 		// connected client times out, the message would not otherwise
 		// be printed until the next event.
-		stdin_ready = NET_Sleep ((int)sys_select_timeout.value / 1000, do_stdin);
+		if (!sys_simulation.value) {
+			stdin_ready = NET_Sleep((int)sys_select_timeout.value / 1000, do_stdin);
+		}
 
 		// find time passed since last cycle
 		newtime = Sys_DoubleTime ();
