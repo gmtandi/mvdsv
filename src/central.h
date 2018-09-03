@@ -6,5 +6,6 @@ void Central_Init(void);
 void Central_Shutdown(void);
 void Central_ProcessResponses(void);
 void Central_SubmitGame(const char* path);
+void Perform_Login(client_t* client, char * authKey); 
 
 #endif // !CENTRAL_H

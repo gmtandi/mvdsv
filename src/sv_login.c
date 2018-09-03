@@ -505,6 +505,16 @@ void Login_Init (void)
 	//SV_LoadAccounts();
 }
 
+void SV_ParseClientAuthKey(client_t *cl, char *authKey) {
+	printf("reached here\n");
+	if (!authKey) {
+		if (Cmd_Argc() > 1) {
+			authKey = Cmd_Argv(1);
+		}
+	}
+	Perform_Login(cl, authKey);
+}
+
 /*
 ===============
 SV_Login
@@ -550,18 +560,41 @@ qbool SV_Login(client_t *cl)
 	// need to login before connecting
 	cl->logged = false;
 	cl->login[0] = 0;
-
-	if (sv_registrationinfo.string[0])
-	{
-		strlcpy (info, sv_registrationinfo.string, 254);
-		strlcat (info, "\n", 255);
+	if (sv_login.value == 2) {
+		if (sv_registrationinfo.string[0])
+		{
+			strlcpy (info, sv_registrationinfo.string, 254);
+			strlcat (info, "\n", 255);
+			MSG_WriteByte (&cl->netchan.message, svc_print);
+			MSG_WriteByte (&cl->netchan.message, PRINT_HIGH);
+			MSG_WriteString (&cl->netchan.message, info);
+		}
+		char *authKey = Info_Get (&cl->_userinfo_ctx_, "authkey");
+		if (!authKey || strlen(authKey) < 1) {
+			MSG_WriteByte (&cl->netchan.message, svc_print);
+			MSG_WriteByte (&cl->netchan.message, PRINT_HIGH);
+			MSG_WriteString (&cl->netchan.message, "Authentication Key Not Found!\nPlease enter your Authentication Key to proceed:\n");
+		}
+		else {
+			MSG_WriteByte (&cl->netchan.message, svc_print);
+			MSG_WriteByte (&cl->netchan.message, PRINT_HIGH);
+			MSG_WriteString (&cl->netchan.message, "Authentication Key Found!\nLogging in...\n");
+			SV_ParseClientAuthKey(cl, authKey);
+		}
+	}
+	else {
+		if (sv_registrationinfo.string[0])
+		{
+			strlcpy (info, sv_registrationinfo.string, 254);
+			strlcat (info, "\n", 255);
+			MSG_WriteByte (&cl->netchan.message, svc_print);
+			MSG_WriteByte (&cl->netchan.message, PRINT_HIGH);
+			MSG_WriteString (&cl->netchan.message, info);
+		}
 		MSG_WriteByte (&cl->netchan.message, svc_print);
 		MSG_WriteByte (&cl->netchan.message, PRINT_HIGH);
-		MSG_WriteString (&cl->netchan.message, info);
+		MSG_WriteString (&cl->netchan.message, "Enter your login and password:\n");
 	}
-	MSG_WriteByte (&cl->netchan.message, svc_print);
-	MSG_WriteByte (&cl->netchan.message, PRINT_HIGH);
-	MSG_WriteString (&cl->netchan.message, "Enter your login and password:\n");
 
 	return false;
 }
@@ -578,6 +611,11 @@ void SV_Logout(client_t *cl)
 
 void SV_ParseLogin(client_t *cl)
 {
+	if (sv_login.value == 2) {
+		SV_ParseClientAuthKey(cl,NULL);
+		return;
+	}
+
 	extern cvar_t sv_forcenick;
 	char *log1, *pass;
 

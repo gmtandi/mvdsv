@@ -658,3 +658,40 @@ void Central_Init(void)
 		Cmd_AddCommand("sv_web_postfile", Web_PostFileRequest_f);
 	}
 }
+
+void Login_Callback(web_request_data_t* req, qbool valid) {
+	client_t* cl = (client_t*) req->internal_data;
+
+	printf("LOGIN PERFORMED \n");
+	
+	printf("response:\n");
+
+	    printf("%s\n", req->response);
+	    printf("--end response:\n");
+
+	cl->logged = 1;
+
+	MSG_WriteByte (&cl->netchan.message, svc_stufftext);
+	MSG_WriteString (&cl->netchan.message, "cmd new\n");
+
+
+}
+
+void Perform_Login(client_t* client, char *authKey) {
+	char url[512] = "http://localhost:8080/auth/index";
+	struct curl_httppost *first_form_ptr = NULL;
+	struct curl_httppost *last_form_ptr = NULL;
+	CURLFORMcode code;
+
+	printf("received authkey %s\n", authKey);
+
+
+	code = curl_formadd(&first_form_ptr, &last_form_ptr,
+		CURLFORM_PTRNAME,  "authKey",
+		CURLFORM_COPYCONTENTS, authKey,
+		CURLFORM_END
+	);
+
+	client->login_request_time = sv.time;
+	Web_SubmitRequestForm(url, first_form_ptr, last_form_ptr, Login_Callback, NULL, client);
+}
