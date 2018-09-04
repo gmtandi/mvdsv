@@ -505,14 +505,13 @@ void Login_Init (void)
 	//SV_LoadAccounts();
 }
 
-void SV_ParseClientAuthKey(client_t *cl, char *authKey) {
-	printf("reached here\n");
-	if (!authKey) {
+void SV_ParseUserKey(client_t *cl, char *userKey) {
+	if (!userKey) {
 		if (Cmd_Argc() > 1) {
-			authKey = Cmd_Argv(1);
+			userKey = Cmd_Argv(1);
 		}
 	}
-	Perform_Login(cl, authKey);
+	Perform_Login(cl, userKey);
 }
 
 /*
@@ -569,17 +568,17 @@ qbool SV_Login(client_t *cl)
 			MSG_WriteByte (&cl->netchan.message, PRINT_HIGH);
 			MSG_WriteString (&cl->netchan.message, info);
 		}
-		char *authKey = Info_Get (&cl->_userinfo_ctx_, "authkey");
-		if (!authKey || strlen(authKey) < 1) {
+		char *userKey = Info_Get (&cl->_userinfo_ctx_, "userkey");
+		if (!userKey || strlen(userKey) < 1) {
 			MSG_WriteByte (&cl->netchan.message, svc_print);
 			MSG_WriteByte (&cl->netchan.message, PRINT_HIGH);
-			MSG_WriteString (&cl->netchan.message, "Authentication Key Not Found!\nPlease enter your Authentication Key to proceed:\n");
+			MSG_WriteString (&cl->netchan.message, "User Key Not Found!\nYou can store your User Key in your config file using\n'setinfo userkey <youruserkey>'\nPlease enter your Authentication Key to proceed:\n");
 		}
 		else {
 			MSG_WriteByte (&cl->netchan.message, svc_print);
 			MSG_WriteByte (&cl->netchan.message, PRINT_HIGH);
-			MSG_WriteString (&cl->netchan.message, "Authentication Key Found!\nLogging in...\n");
-			SV_ParseClientAuthKey(cl, authKey);
+			MSG_WriteString (&cl->netchan.message, "User Key Found!\nLogging in...\n");
+			SV_ParseUserKey(cl, userKey);
 		}
 	}
 	else {
@@ -612,7 +611,7 @@ void SV_Logout(client_t *cl)
 void SV_ParseLogin(client_t *cl)
 {
 	if (sv_login.value == 2) {
-		SV_ParseClientAuthKey(cl,NULL);
+		SV_ParseUserKey(cl,NULL);
 		return;
 	}
 

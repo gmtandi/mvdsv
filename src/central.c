@@ -6,6 +6,7 @@
 
 #define GENERATE_CHALLENGE_PATH     "Authentication/GenerateChallenge"
 #define VERIFY_RESPONSE_PATH        "Authentication/VerifyResponse"
+#define USERKEY_LOGIN_PATH        	"Authentication/Userkey"
 #define CHECKIN_PATH                "ServerApi/Checkin"
 #define MIN_CHECKIN_PERIOD          60
 
@@ -348,6 +349,7 @@ static void Web_SubmitRequestForm(const char* url, struct curl_httppost *first_f
 	curl_easy_setopt(req, CURLOPT_URL, url);
 	curl_easy_setopt(req, CURLOPT_WRITEDATA, data);
 	curl_easy_setopt(req, CURLOPT_WRITEFUNCTION, Web_StandardTokenWrite);
+	curl_easy_setopt(req, CURLOPT_FAILONERROR, 1L);
 	if (first_form_ptr) {
 		curl_easy_setopt(req, CURLOPT_POST, 1);
 		curl_easy_setopt(req, CURLOPT_HTTPPOST, first_form_ptr);
@@ -661,37 +663,41 @@ void Central_Init(void)
 
 void Login_Callback(web_request_data_t* req, qbool valid) {
 	client_t* cl = (client_t*) req->internal_data;
+	if (!valid) {
+		MSG_WriteByte (&cl->netchan.message, svc_print);
+		MSG_WriteByte (&cl->netchan.message, PRINT_HIGH);
+		MSG_WriteString (&cl->netchan.message, "=======================\nAuthentication FAILED.\n=======================\nEither the code you entered or the one present in 'setinfo userkey' is invalid.\ndisconnected.\n");
+		MSG_WriteByte (&cl->netchan.message, svc_stufftext);
+		MSG_WriteString (&cl->netchan.message, "disconnect\n");
+		return;
+	}
+	else {
+		MSG_WriteByte (&cl->netchan.message, svc_print);
+		MSG_WriteByte (&cl->netchan.message, PRINT_HIGH);
+		MSG_WriteString (&cl->netchan.message, va("Authentication Successful!\nLogged in as %s\n", req->response));
+		cl->logged = 1;
+		strlcpy(cl->login, req->response, CLIENT_LOGIN_LEN);
+		Info_SetStar (&cl->_userinfoshort_ctx_, "*login", cl->login);
 
-	printf("LOGIN PERFORMED \n");
-	
-	printf("response:\n");
-
-	    printf("%s\n", req->response);
-	    printf("--end response:\n");
-
-	cl->logged = 1;
-
-	MSG_WriteByte (&cl->netchan.message, svc_stufftext);
-	MSG_WriteString (&cl->netchan.message, "cmd new\n");
+		MSG_WriteByte (&cl->netchan.message, svc_stufftext);
+		MSG_WriteString (&cl->netchan.message, "cmd new\n");
+	}
 
 
 }
 
-void Perform_Login(client_t* client, char *authKey) {
-	char url[512] = "http://localhost:8080/auth/index";
+void Perform_Login(client_t* client, char *userKey) {
+	char url[512];
 	struct curl_httppost *first_form_ptr = NULL;
 	struct curl_httppost *last_form_ptr = NULL;
-	CURLFORMcode code;
 
-	printf("received authkey %s\n", authKey);
-
-
-	code = curl_formadd(&first_form_ptr, &last_form_ptr,
-		CURLFORM_PTRNAME,  "authKey",
-		CURLFORM_COPYCONTENTS, authKey,
-		CURLFORM_END
-	);
+	curl_formadd(&first_form_ptr,
+             &last_form_ptr,
+             CURLFORM_COPYNAME, "userKey",
+             CURLFORM_COPYCONTENTS, userKey,
+             CURLFORM_END);
 
 	client->login_request_time = sv.time;
+	Web_ConstructURL(url, USERKEY_LOGIN_PATH, sizeof(url));
 	Web_SubmitRequestForm(url, first_form_ptr, last_form_ptr, Login_Callback, NULL, client);
 }
