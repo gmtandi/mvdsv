@@ -2823,6 +2823,31 @@ void PF_Fixme (void)
 }
 
 
+/*
+=================
+PF_logevent
+ 
+write to event log file
+ 
+logevent(value)
+=================
+*/
+void PF_logevent (void)
+{
+	char		*s;
+
+	s = PF_VarString(0);
+
+        if (sv.mvdrecording)
+        {
+		mvddest_t *d;
+		d = demo.dest;
+		if (d->fileevent)
+			fprintf(d->fileevent, "%s", s);
+	}
+}
+
+
 
 static builtin_t std_builtins[] =
 {
@@ -2958,7 +2983,9 @@ static struct { int num; builtin_t func; } ext_builtins[] =
 {121, PF_str2short},
 {122, PF_newstr},
 {123, PF_freestr},
-{124, PF_locationname}, 
+{124, PF_locationname},
+{125, PF_logevent},
+{231, PF_calltimeofday},
 
 {448, PF_cvar_string},	// string(string varname) cvar_string
 {531, PF_setpause},		//void(float pause) setpause
@@ -2998,4 +3025,3 @@ void PR_InitBuiltins (void)
 		pr_builtins[ext_builtins[i].num] = ext_builtins[i].func;
 	}
 }
-
