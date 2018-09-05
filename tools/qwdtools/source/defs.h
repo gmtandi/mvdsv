@@ -52,6 +52,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include <fcntl.h>
 
 #define INI_FILE "qwdtools.ini"
+#define QWE_VERSION "HUE"
 
 typedef float vec_t;
 typedef vec_t vec3_t[3];
@@ -88,9 +89,9 @@ typedef vec_t vec3_t[3];
 #define JOB_TODO (O_MARGE | O_CONVERT | O_ANALYSE | O_LOG | O_DEBUG)
 
 #define QWDTOOLS
-#include "../../../source/bothdefs.h"
-#include "../../../source/protocol.h"
-#include "../../../source/version.h"
+#include "../../../src/bothdefs.h"
+#include "../../../src/protocol.h"
+#include "../../../src/version.h"
 #include "tools.h"
 #include "world.h"
 

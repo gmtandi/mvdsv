@@ -26,9 +26,9 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "pr2.h"
 #include "g_public.h"
 #endif
-#ifndef SERVERONLY
-#include "qtv.h"
-#endif
+// #ifndef SERVERONLY
+// #include "qtv.h"
+// #endif
 
 #define CHAT_ICON_EXPERIMENTAL 1
 

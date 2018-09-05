@@ -1,3 +1,7 @@
+CC=gcc
+BYTE_ORDER=__LITTLE_ENDIAN__
+UNAME=Linux
+ARCH=x86_64
 #
 # QWDTools Makefile for Linux and SunOS
 #

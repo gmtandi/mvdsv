@@ -30,6 +30,7 @@ mvdsv_sources = [
 	'src/sv_demo_qtv.c',
 	'src/sv_ents.c',
 	'src/sv_init.c',
+	'src/sv_locs.c',
 	'src/sv_login.c',
 	'src/sv_main.c',
 	'src/sv_master.c',

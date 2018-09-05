@@ -511,7 +511,10 @@ void SV_ParseUserKey(client_t *cl, char *userKey) {
 			userKey = Cmd_Argv(1);
 		}
 	}
+#if defined(SERVERONLY) && defined(WWW_INTEGRATION)
 	Perform_Login(cl, userKey);
+#endif
+
 }
 
 /*
