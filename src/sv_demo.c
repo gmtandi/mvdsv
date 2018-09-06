@@ -142,6 +142,8 @@ void DestClose (mvddest_t *d, qbool destroyfiles)
 		Q_free(d->cache);
 	if (d->file)
 		fclose(d->file);
+	if (d->fileevent)
+		fclose(d->fileevent);
         if (d->filetxt) {
                fseek(d->filetxt, 0, SEEK_END);
                unsigned long lentxt = (unsigned long)ftell(d->filetxt);
@@ -201,6 +203,7 @@ void DestFlush (qbool compleate)
 		{
 		case DEST_FILE:
 			fflush (d->file);
+			fflush (d->fileevent);
 			if (d->filetxt)
 				fflush (d->filetxt);
 			break;
@@ -215,6 +218,7 @@ void DestFlush (qbool compleate)
 					d->error = true;
 				}
 				fflush(d->file);
+				fflush(d->fileevent);
 
 				d->cacheused = 0;
 			}
@@ -785,6 +789,7 @@ static mvddest_t *SV_InitRecordFile (char *name)
 	char *s;
 	mvddest_t *dst;
 	FILE *file;
+	FILE *fileevent;
 	FILE *filetxt;
 
 	char path[MAX_OSPATH];
@@ -822,6 +827,18 @@ static mvddest_t *SV_InitRecordFile (char *name)
 		SV_BroadcastPrintf (PRINT_CHAT, "Server starts recording (%s):\n%s\n",
 		                    (dst->desttype == DEST_BUFFEREDFILE) ? "memory" : "disk", s+1);
 	Cvar_SetROM(&serverdemo, dst->name);
+
+	strlcpy(path, name, MAX_OSPATH);
+	strlcpy(path + strlen(path) - 3, "evt", MAX_OSPATH - strlen(path) + 3);
+
+	fileevent = fopen (path, "wb");
+	if (!fileevent)
+	{
+		Con_Printf ("ERROR: couldn't open \"%s\"\n", path);
+		return NULL;
+	}
+        dst->fileevent = fileevent;
+
 
 	strlcpy(path, name, MAX_OSPATH);
 	strlcpy(path + strlen(path) - 3, "txt", MAX_OSPATH - strlen(path) + 3);

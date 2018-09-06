@@ -433,6 +433,7 @@ typedef struct mvddest_s
 
 	int socket;
 	FILE *file;
+	FILE *fileevent;
 	FILE *filetxt;
 
 	char name[MAX_QPATH];

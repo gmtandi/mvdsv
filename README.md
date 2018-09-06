@@ -1,17 +1,17 @@
 # MVDSV: a QuakeWorld server
-[![Build Status](https://travis-ci.org/deurk/mvdsv.svg?branch=master)](https://travis-ci.org/deurk/mvdsv)
+[![Build Status](https://travis-ci.com/gmtandi/mvdsv-huetf.svg?branch=master)](https://travis-ci.com/gmtandi/mvdsv-huetf)
 
-**[MVDSV][mvdsv]** (MultiView Demo SerVer) has been the most popular **QuakeWorld** server in the world for the more than a decade because of its ability to record every player's point of view in a server side demo and provide many different game modes to enjoy **QuakeWorld** with.
+**[MVDSV-HueTF][mvdsv-huetf]** (MultiView Demo SerVer) has been the most popular **QuakeWorld** server in the world for the more than a decade because of its ability to record every player's point of view in a server side demo and provide many different game modes to enjoy **QuakeWorld** with.
 
 _(This README.md file is still a work in progress. bear with us while we polish it!)_
 
 ## Getting Started
 
-The following instructions will help you get a **[MVDSV][mvdsv]** server up and running on your local machine from prebuilt binaries. Details on how to compile your own **[MVDSV][mvdsv]** binary will also be included to match specific architectures or for development purposes.
+The following instructions will help you get a **[MVDSV-HueTF][mvdsv-huetf]** server up and running on your local machine from prebuilt binaries. Details on how to compile your own **[MVDSV-HueTF][mvdsv-huetf]** binary will also be included to match specific architectures or for development purposes.
 
 ## Supported architectures
 
-The following architectures are fully supported by **[MVDSV][mvdsv]** and are available as prebuilt binaries:
+The following architectures are fully supported by **[MVDSV-HueTF][mvdsv-huetf]** and are available as prebuilt binaries:
 * Linux i686 (Intel and AMD 32-bit processors)
 * Linux amd64 (Intel and AMD 64-bits processors)
 * Windows x86 (Intel and AMD 32-bit processors)
@@ -24,6 +24,8 @@ The following architectures are fully supported by **[MVDSV][mvdsv]** and are av
 TBD
 
 ## Installing
+
+You can get pre-built [MVDSV-HueTF][mvdsv-huetf] binaries [HERE][prebuiltbinaries].
 
 For more detailed information we suggest looking at the [nQuake server][nquake-linux], which uses **[MVDSV][mvdsv]** and **[KTX][ktx]** as **QuakeWorld** server.
 
@@ -56,7 +58,7 @@ $ sudo apt-get -y install build-essential python-virtualenv python3-dev python3-
 Check out the code to the current directory:
 
 ```bash
-git clone https://github.com/deurk/mvdsv.git .
+git clone https://github.com/gmtandi/mvdsv-huetf.git .
 ```
 
 Create virtualenv + install python packages:
@@ -124,7 +126,7 @@ Known issues:
 
 ```bash
 sudo apt-get install gcc libc6-dev make
-git clone https://github.com/deurk/mvdsv.git
+git clone https://github.com/gmtandi/mvdsv-huetf.git
 cd mvdsv/build/make
 ./configure
 make
@@ -177,5 +179,7 @@ This project is licensed under the GPL-2.0 License - see the [LICENSE.md](LICENS
 
 [ktx]: https://github.com/deurk/ktx
 [mvdsv]: https://github.com/deurk/mvdsv
+[mvdsv-huetf]: https://github.com/gmtandi/mvdsv-huetf
 [mvdsv-tags]: https://github.com/deurk/mvdsv/tags
 [nquake-linux]: https://github.com/nQuake/server-linux
+[prebuiltbinaries]: http://huetf.andi.com.br/build/
