@@ -2848,6 +2848,25 @@ void PF_logevent (void)
 }
 
 
+/*
+=================
+PF_sprintf
+
+returns string formated
+
+string sprintf(string format, ...);
+=================
+*/
+
+void PF_sprintf (void)
+{
+	sprintf(pr_string_temp, G_STRING(OFS_PARM0), G_STRING(OFS_PARM1), G_STRING(OFS_PARM2), G_STRING(OFS_PARM3), G_STRING(OFS_PARM4), G_STRING(OFS_PARM5), G_STRING(OFS_PARM6), G_STRING(OFS_PARM7));
+
+	PR1_SetString(&G_INT(OFS_RETURN), pr_string_temp);
+	PF_SetTempString();
+}
+
+
 
 static builtin_t std_builtins[] =
 {
@@ -2985,6 +3004,7 @@ static struct { int num; builtin_t func; } ext_builtins[] =
 {123, PF_freestr},
 {124, PF_locationname},
 {125, PF_logevent},
+{126, PF_sprintf},
 {231, PF_calltimeofday},
 
 {448, PF_cvar_string},	// string(string varname) cvar_string
