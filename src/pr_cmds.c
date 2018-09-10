@@ -2843,7 +2843,7 @@ void PF_logevent (void)
 		mvddest_t *d;
 		d = demo.dest;
 		if (d->fileevent)
-			fprintf(d->fileevent, "%s", s);
+			fprintf(d->fileevent, "%s", Q_normalizetext(s));
 	}
 }
 
