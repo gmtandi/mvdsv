@@ -829,7 +829,7 @@ static mvddest_t *SV_InitRecordFile (char *name)
 	Cvar_SetROM(&serverdemo, dst->name);
 
 	strlcpy(path, name, MAX_OSPATH);
-	strlcpy(path + strlen(path) - 3, "evt", MAX_OSPATH - strlen(path) + 3);
+	strlcpy(path + strlen(path) - 3, "json", MAX_OSPATH - strlen(path) + 4);
 
 	fileevent = fopen (path, "wb");
 	if (!fileevent)
