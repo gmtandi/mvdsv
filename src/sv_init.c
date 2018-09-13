@@ -39,6 +39,8 @@ int fofs_trackent;
 int fofs_visibility;
 int fofs_hide_players;
 int fofs_teleported;
+char matchtimestr[20];
+
 
 /*
 ================
@@ -438,6 +440,21 @@ void SV_SpawnServer(char *mapname, qbool devmap, char* entityfile, qbool loading
 			sv.max_edicts = min(sv.max_edicts, MAX_EDICTS_SAFE);
 		}
 	}
+
+	//store timestamp in matchtimestr, so the mod can pick it up using a builtin
+	long            ms; // Milliseconds
+    time_t          s;  // Seconds
+    struct timespec spec;
+
+    clock_gettime(CLOCK_REALTIME, &spec);
+
+    s  = spec.tv_sec;
+    ms = round(spec.tv_nsec / 1.0e6); // Convert nanoseconds to milliseconds
+    if (ms > 999) {
+        s++;
+        ms = 0;
+    }
+    sprintf(matchtimestr, "%ld%ld", (intmax_t)s, ms);
 
 	sv.map_checksum2 = Com_TranslateMapChecksum (sv.mapname, sv.map_checksum2);
 	sv.static_entity_count = 0;

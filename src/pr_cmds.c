@@ -1190,6 +1190,15 @@ void PF_calltimeofday (void)
 		PR_ExecuteProgram(f);
 	}
 }
+char  matchtimestr[20];
+
+void PF_timemillis(void)
+{
+
+	PR1_SetString(&G_INT(OFS_RETURN), matchtimestr);
+
+	PF_SetTempString();
+}
 
 
 
@@ -3005,6 +3014,7 @@ static struct { int num; builtin_t func; } ext_builtins[] =
 {124, PF_locationname},
 {125, PF_logevent},
 {126, PF_sprintf},
+{127, PF_timemillis},
 {231, PF_calltimeofday},
 
 {448, PF_cvar_string},	// string(string varname) cvar_string

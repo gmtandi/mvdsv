@@ -94,6 +94,7 @@ extern	cvar_t	developer;
 extern	qbool	host_initialized;
 extern	qbool	host_everything_loaded;
 extern	double	curtime; // not bounded or scaled, shared by local client and server
+extern	char	matchtimestr[20];
 
 void SV_Error (char *error, ...);
 void SV_Init (void);
