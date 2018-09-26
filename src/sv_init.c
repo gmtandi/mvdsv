@@ -454,7 +454,8 @@ void SV_SpawnServer(char *mapname, qbool devmap, char* entityfile, qbool loading
         s++;
         ms = 0;
     }
-    sprintf(matchtimestr, "%ld%ld", (intmax_t)s, ms);
+
+    sprintf(matchtimestr, "%ld%03d", (intmax_t)s, ms);
 
 	sv.map_checksum2 = Com_TranslateMapChecksum (sv.mapname, sv.map_checksum2);
 	sv.static_entity_count = 0;
